@@ -979,7 +979,7 @@ global:
       enabled: false
   EOT
 
-cert_manager_values = var.cert_manager_values != "" ? var.cert_manager_values : <<EOT
+cert_manager_values_default = <<EOT
 crds:
   enabled: true
   keep: true
@@ -994,6 +994,15 @@ extraArgs:
   - --feature-gates=ACMEHTTP01IngressPathTypeExact=false
 %{endif~}
   EOT
+
+cert_manager_values_base = var.cert_manager_values != "" ? var.cert_manager_values : local.cert_manager_values_default
+
+cert_manager_values = var.cert_manager_merge_values != "" ? yamlencode(
+  provider::deepmerge::mergo(
+    yamldecode(local.cert_manager_values_base),
+    yamldecode(var.cert_manager_merge_values)
+  )
+) : local.cert_manager_values_base
 
 kured_options = merge({
   "reboot-command" : "/usr/bin/systemctl reboot",

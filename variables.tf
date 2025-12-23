@@ -967,6 +967,17 @@ variable "cert_manager_values" {
   description = "Additional helm values file to pass to Cert-Manager as 'valuesContent' at the HelmChart. Defaults are set in locals.tf. For cert-manager versions prior to v1.15.0, you need to set 'installCRDs: true'."
 }
 
+variable "cert_manager_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or cert_manager_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.cert_manager_merge_values == "" || can(yamldecode(var.cert_manager_merge_values))
+    error_message = "cert_manager_merge_values must be valid YAML format or empty string."
+  }
+}
+
 variable "enable_rancher" {
   type        = bool
   default     = false
