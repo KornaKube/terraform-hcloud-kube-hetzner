@@ -675,7 +675,7 @@ spec:
 
   EOT
 
-  longhorn_values = var.longhorn_values != "" ? var.longhorn_values : <<EOT
+  longhorn_values_default = <<EOT
 defaultSettings:
 %{if length(var.autoscaler_nodepools) != 0~}
   kubernetesClusterAutoscalerEnabled: true
@@ -686,6 +686,15 @@ persistence:
   defaultClassReplicaCount: ${var.longhorn_replica_count}
   %{if var.disable_hetzner_csi~}defaultClass: true%{else~}defaultClass: false%{endif~}
   EOT
+
+  longhorn_values_base = var.longhorn_values != "" ? var.longhorn_values : local.longhorn_values_default
+
+  longhorn_values = var.longhorn_merge_values != "" ? yamlencode(
+    provider::deepmerge::mergo(
+      yamldecode(local.longhorn_values_base),
+      yamldecode(var.longhorn_merge_values)
+    )
+  ) : local.longhorn_values_base
 
   csi_driver_smb_values = var.csi_driver_smb_values != "" ? var.csi_driver_smb_values : <<EOT
   EOT

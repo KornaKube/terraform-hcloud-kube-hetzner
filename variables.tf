@@ -902,6 +902,17 @@ variable "longhorn_values" {
   description = "Additional helm values file to pass to longhorn as 'valuesContent' at the HelmChart."
 }
 
+variable "longhorn_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or longhorn_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.longhorn_merge_values == "" || can(yamldecode(var.longhorn_merge_values))
+    error_message = "longhorn_merge_values must be valid YAML format or empty string."
+  }
+}
+
 variable "disable_hetzner_csi" {
   type        = bool
   default     = false
