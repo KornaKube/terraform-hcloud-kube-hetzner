@@ -505,7 +505,7 @@ module "kube-hetzner" {
   # longhorn_replica_count = 1
 
   # When you enable Longhorn, you can go with the default settings and just modify the above two variables OR you can add a longhorn_values variable
-  # with all needed helm values, see towards the end of the file in the advanced section.
+  # with all needed helm values, see towards the end of the file in the advanced section. You can also use longhorn_merge_values.
   # If that file is present, the system will use it during the deploy, if not it will use the default values with the two variable above that can be customized.
   # After the cluster is deployed, you can always use HelmChartConfig definition to tweak the configuration.
 
@@ -534,6 +534,7 @@ module "kube-hetzner" {
   # If you want to enable the Nginx (https://kubernetes.github.io/ingress-nginx/) or HAProxy ingress controller instead of Traefik, you can set this to "nginx" or "haproxy".
   # By the default we load optimal Traefik, Nginx or HAProxy ingress controller config for Hetzner, however you may need to tweak it to your needs, so to do,
   # we allow you to add a traefik_values, nginx_values or haproxy_values, see towards the end of this file in the advanced section.
+  # You can also use *_merge_values to overlay defaults (or the *_values file if set).
   # After the cluster is deployed, you can always use HelmChartConfig definition to tweak the configuration.
   # If you want to disable both controllers set this to "none"
   # ingress_controller = "nginx"
@@ -820,7 +821,7 @@ module "kube-hetzner" {
   # If you want to configure a different CNI for k3s, use this flag
   # possible values: flannel (Default), calico, and cilium
   # As for Cilium, we allow infinite configurations via helm values, please check the CNI section of the readme over at https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/#cni.
-  # Also, see the cilium_values at towards the end of this file, in the advanced section.
+  # Also, see the cilium_values at towards the end of this file, in the advanced section (or use cilium_merge_values).
   # ⚠️ Depending on your setup, sometimes you need your control-planes to have more than
   # 2GB of RAM if you are going to use Cilium, otherwise the pods will not start.
   # cni_plugin = "cilium"
@@ -933,7 +934,7 @@ module "kube-hetzner" {
   # See for options https://ranchermanager.docs.rancher.com/getting-started/installation-and-upgrade/install-upgrade-on-a-kubernetes-cluster#3-choose-your-ssl-configuration
   # The easiest thing is to leave everything as is (using the default rancher self-signed certificate) and put Cloudflare in front of it.
   # As for the number of replicas, by default it is set to the number of control plane nodes.
-  # You can customized all of the above by adding a rancher_values variable see at the end of this file in the advanced section.
+  # You can customized all of the above by adding a rancher_values variable see at the end of this file in the advanced section (or use rancher_merge_values).
   # After the cluster is deployed, you can always use HelmChartConfig definition to tweak the configuration.
   # IMPORTANT: Rancher's install is quite memory intensive, you will require at least 4GB if RAM, meaning cx23 server type (for your control plane).
   # ALSO, in order for Rancher to successfully deploy, you have to set the "rancher_hostname".
@@ -997,9 +998,11 @@ module "kube-hetzner" {
   # You can inline the values here in heredoc-style (as the examples below with the <<EOT to EOT). Please note that the current indentation inside the EOT is important.
   # Or you can create a thepackage-values.yaml file with the content and use it here with the following syntax:
   # thepackage_values = file("thepackage-values.yaml")
+  # _values fully replaces the chart values used by the module. _merge_values keeps the defaults (or *_values if set) and overlays your YAML on top.
 
   # Cilium, all Cilium helm values can be found at https://github.com/cilium/cilium/blob/master/install/kubernetes/cilium/values.yaml
   # Be careful when maintaining your own cilium_values, as the choice of available settings depends on the Cilium version used. See also the cilium_version setting to fix a specific version.
+  # If you want to merge extra values into defaults (or cilium_values), use cilium_merge_values.
   # The following is an example, please note that the current indentation inside the EOT is important.
   /*   cilium_values = <<EOT
 
@@ -1022,10 +1025,17 @@ encryption:
 MTU: 1450
   EOT */
 
+  /*   cilium_merge_values = <<EOT
+encryption:
+  enabled: true
+  type: wireguard
+  EOT */
+
   # If you want to use a specific cert-manager helm chart version, set it below; otherwise, leave them as-is for the latest versions.
   # cert_manager_version = ""
 
   # Cert manager, all cert-manager helm values can be found at https://github.com/cert-manager/cert-manager/blob/master/deploy/charts/cert-manager/values.yaml
+  # If you want to merge extra values into defaults (or cert_manager_values), use cert_manager_merge_values.
   # The following is an example, please note that the current indentation inside the EOT is important.
   # For cert-manager versions < v1.15.0, you need to set installCRDs: true instead of crds.enabled and crds.keep.
   /*   cert_manager_values = <<EOT
@@ -1039,8 +1049,14 @@ cainjector:
   replicaCount: 3
   EOT */
 
+  /*   cert_manager_merge_values = <<EOT
+webhook:
+  replicaCount: 2
+  EOT */
+
   # Hetzner Cloud Controller Manager, all Hetzner Cloud Controller Manager helm values can be found at https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/chart/values.yaml
   # We advise you to not touch this and to let the defaults that are already set under the hood.
+  # If you want to merge extra values into defaults (or hetzner_ccm_values), use hetzner_ccm_merge_values.
   # For advanced use cases like adding Hetzner Robot servers, see: https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/blob/master/docs/add-robot-server.md
   # The following is an example, please note that the current indentation inside the EOT is important.
   /*   hetzner_ccm_values = <<EOT
@@ -1060,6 +1076,12 @@ env:
     value: "true"
   HCLOUD_LOAD_BALANCERS_DISABLE_PRIVATE_INGRESS:
     value: "true"
+  EOT */
+
+  /*   hetzner_ccm_merge_values = <<EOT
+env:
+  HCLOUD_LOAD_BALANCERS_LOCATION:
+    value: "nbg1"
   EOT */
 
   # csi-driver-smb, all csi-driver-smb helm values can be found at https://github.com/kubernetes-csi/csi-driver-smb/blob/master/charts/latest/csi-driver-smb/values.yaml
@@ -1092,6 +1114,7 @@ controller:
   EOT */
 
   # Longhorn, all Longhorn helm values can be found at https://github.com/longhorn/longhorn/blob/master/chart/values.yaml
+  # If you want to merge extra values into defaults (or longhorn_values), use longhorn_merge_values.
   # The following is an example, please note that the current indentation inside the EOT is important.
   /*   longhorn_values = <<EOT
 defaultSettings:
@@ -1102,11 +1125,17 @@ persistence:
   defaultClass: true
   EOT */
 
+  /*   longhorn_merge_values = <<EOT
+defaultSettings:
+  defaultReplicaCount: 2
+  EOT */
+
   # If you want to use a specific Traefik helm chart version, set it below; otherwise, leave them as-is for the latest versions.
   # See https://github.com/traefik/traefik-helm-chart/releases for the available versions.
   # traefik_version = ""
 
   # Traefik, all Traefik helm values can be found at https://github.com/traefik/traefik-helm-chart/blob/master/traefik/values.yaml
+  # If you want to merge extra values into defaults (or traefik_values), use traefik_merge_values.
   # The following is an example, please note that the current indentation inside the EOT is important.
   /*   traefik_values = <<EOT
 deployment:
@@ -1150,12 +1179,19 @@ ports:
         - 10.0.0.0/8
   EOT */
 
+  /*   traefik_merge_values = <<EOT
+service:
+  annotations:
+    "load-balancer.hetzner.cloud/location": "fsn1"
+  EOT */
+
   # If you want to use a specific Nginx helm chart version, set it below; otherwise, leave them as-is for the latest versions.
   # See https://github.com/kubernetes/ingress-nginx?tab=readme-ov-file#supported-versions-table for the available versions.
   # nginx_version = ""
 
   # Nginx, all Nginx helm values can be found at https://github.com/kubernetes/ingress-nginx/blob/main/charts/ingress-nginx/values.yaml
   # You can also have a look at https://kubernetes.github.io/ingress-nginx/, to understand how it works, and all the options at your disposal.
+  # If you want to merge extra values into defaults (or nginx_values), use nginx_merge_values.
   # The following is an example, please note that the current indentation inside the EOT is important.
   /*   nginx_values = <<EOT
 controller:
@@ -1173,6 +1209,11 @@ controller:
       "load-balancer.hetzner.cloud/location": "nbg1"
       "load-balancer.hetzner.cloud/type": "lb11"
       "load-balancer.hetzner.cloud/uses-proxyprotocol": "true"
+  EOT */
+
+  /*   nginx_merge_values = <<EOT
+controller:
+  kind: "Deployment"
   EOT */
 
   # If you want to use a specific HAProxy helm chart version, set it below; otherwise, leave them as-is for the latest versions.
@@ -1212,10 +1253,17 @@ controller:
   # Override values given to the HAProxy helm chart.
   # All HAProxy helm values can be found at https://github.com/haproxytech/helm-charts/blob/main/kubernetes-ingress/values.yaml
   # Default values can be found at https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/blob/master/locals.tf
+  # If you want to merge extra values into defaults (or haproxy_values), use haproxy_merge_values.
   /*   haproxy_values = <<EOT
   EOT */
 
+  /*   haproxy_merge_values = <<EOT
+controller:
+  replicaCount: 2
+  EOT */
+
   # Rancher, all Rancher helm values can be found at https://rancher.com/docs/rancher/v2.5/en/installation/install-rancher-on-k8s/chart-options/
+  # If you want to merge extra values into defaults (or rancher_values), use rancher_merge_values.
   # The following is an example, please note that the current indentation inside the EOT is important.
   /*   rancher_values = <<EOT
 ingress:
@@ -1224,6 +1272,10 @@ ingress:
 hostname: "rancher.example.com"
 replicas: 1
 bootstrapPassword: "supermario"
+  EOT */
+
+  /*   rancher_merge_values = <<EOT
+replicas: 3
   EOT */
 
 }

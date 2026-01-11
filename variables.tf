@@ -571,6 +571,17 @@ variable "traefik_values" {
   description = "Additional helm values file to pass to Traefik as 'valuesContent' at the HelmChart."
 }
 
+variable "traefik_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or traefik_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.traefik_merge_values == "" || can(yamldecode(var.traefik_merge_values))
+    error_message = "traefik_merge_values must be valid YAML format or empty string."
+  }
+}
+
 variable "nginx_version" {
   type        = string
   default     = ""
@@ -581,6 +592,17 @@ variable "nginx_values" {
   type        = string
   default     = ""
   description = "Additional helm values file to pass to nginx as 'valuesContent' at the HelmChart."
+}
+
+variable "nginx_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or nginx_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.nginx_merge_values == "" || can(yamldecode(var.nginx_merge_values))
+    error_message = "nginx_merge_values must be valid YAML format or empty string."
+  }
 }
 
 variable "haproxy_requests_cpu" {
@@ -611,6 +633,17 @@ variable "haproxy_values" {
   type        = string
   default     = ""
   description = "Helm values file to pass to haproxy as 'valuesContent' at the HelmChart, overriding the default."
+}
+
+variable "haproxy_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or haproxy_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.haproxy_merge_values == "" || can(yamldecode(var.haproxy_merge_values))
+    error_message = "haproxy_merge_values must be valid YAML format or empty string."
+  }
 }
 
 variable "allow_scheduling_on_control_plane" {
@@ -782,6 +815,17 @@ variable "cilium_values" {
   description = "Additional helm values file to pass to Cilium as 'valuesContent' at the HelmChart."
 }
 
+variable "cilium_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or cilium_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.cilium_merge_values == "" || can(yamldecode(var.cilium_merge_values))
+    error_message = "cilium_merge_values must be valid YAML format or empty string."
+  }
+}
+
 variable "cilium_version" {
   type        = string
   default     = "1.17.0"
@@ -858,6 +902,17 @@ variable "longhorn_values" {
   description = "Additional helm values file to pass to longhorn as 'valuesContent' at the HelmChart."
 }
 
+variable "longhorn_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or longhorn_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.longhorn_merge_values == "" || can(yamldecode(var.longhorn_merge_values))
+    error_message = "longhorn_merge_values must be valid YAML format or empty string."
+  }
+}
+
 variable "disable_hetzner_csi" {
   type        = bool
   default     = false
@@ -910,6 +965,17 @@ variable "cert_manager_values" {
   type        = string
   default     = ""
   description = "Additional helm values file to pass to Cert-Manager as 'valuesContent' at the HelmChart. Defaults are set in locals.tf. For cert-manager versions prior to v1.15.0, you need to set 'installCRDs: true'."
+}
+
+variable "cert_manager_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or cert_manager_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.cert_manager_merge_values == "" || can(yamldecode(var.cert_manager_merge_values))
+    error_message = "cert_manager_merge_values must be valid YAML format or empty string."
+  }
 }
 
 variable "enable_rancher" {
@@ -992,6 +1058,17 @@ variable "rancher_values" {
   type        = string
   default     = ""
   description = "Additional helm values file to pass to Rancher as 'valuesContent' at the HelmChart."
+}
+
+variable "rancher_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or rancher_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.rancher_merge_values == "" || can(yamldecode(var.rancher_merge_values))
+    error_message = "rancher_merge_values must be valid YAML format or empty string."
+  }
 }
 
 variable "kured_version" {
@@ -1244,4 +1321,15 @@ variable "hetzner_ccm_values" {
   type        = string
   default     = ""
   description = "Additional helm values file to pass to Hetzner Controller Manager as 'valuesContent' at the HelmChart."
+}
+
+variable "hetzner_ccm_merge_values" {
+  type        = string
+  default     = ""
+  description = "Additional Helm values to merge with defaults (or hetzner_ccm_values if set). User values take precedence. Requires valid YAML format."
+
+  validation {
+    condition     = var.hetzner_ccm_merge_values == "" || can(yamldecode(var.hetzner_ccm_merge_values))
+    error_message = "hetzner_ccm_merge_values must be valid YAML format or empty string."
+  }
 }

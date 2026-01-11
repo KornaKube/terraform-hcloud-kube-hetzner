@@ -567,7 +567,7 @@ locals {
 
   kube_apiserver_arg = var.authentication_config != "" ? ["authentication-config=/etc/rancher/k3s/authentication_config.yaml"] : []
 
-  cilium_values = var.cilium_values != "" ? var.cilium_values : <<EOT
+  cilium_values_default = <<EOT
 # Enable Kubernetes host-scope IPAM mode (required for K3s + Hetzner CCM)
 ipam:
   mode: kubernetes
@@ -638,6 +638,8 @@ hubble:
 MTU: 1450
   EOT
 
+  cilium_values = module.values_merger_cilium.values
+
   # Not to be confused with the other helm values, this is used for the calico.yaml kustomize patch
   # It also serves as a stub for a potential future use via helm values
   calico_values = var.calico_values != "" ? var.calico_values : <<EOT
@@ -666,7 +668,7 @@ spec:
 
   EOT
 
-  longhorn_values = var.longhorn_values != "" ? var.longhorn_values : <<EOT
+  longhorn_values_default = <<EOT
 defaultSettings:
 %{if length(var.autoscaler_nodepools) != 0~}
   kubernetesClusterAutoscalerEnabled: true
@@ -677,6 +679,8 @@ persistence:
   defaultClassReplicaCount: ${var.longhorn_replica_count}
   %{if var.disable_hetzner_csi~}defaultClass: true%{else~}defaultClass: false%{endif~}
   EOT
+
+  longhorn_values = module.values_merger_longhorn.values
 
   csi_driver_smb_values = var.csi_driver_smb_values != "" ? var.csi_driver_smb_values : <<EOT
   EOT
@@ -693,7 +697,7 @@ node:
 EOT
   : "")
 
-  nginx_values = var.nginx_values != "" ? var.nginx_values : <<EOT
+  nginx_values_default = <<EOT
 controller:
   watchIngressWithoutClass: "true"
   kind: "Deployment"
@@ -723,7 +727,9 @@ controller:
 %{endif~}
   EOT
 
-  hetzner_ccm_values = var.hetzner_ccm_values != "" ? var.hetzner_ccm_values : <<EOT
+  nginx_values = module.values_merger_nginx.values
+
+  hetzner_ccm_values_default = <<EOT
 networking:
   enabled: true
   clusterCIDR: "${var.cluster_ipv4_cidr}"
@@ -748,7 +754,9 @@ env:
 hostNetwork: true
   EOT
 
-  haproxy_values = var.haproxy_values != "" ? var.haproxy_values : <<EOT
+  hetzner_ccm_values = module.values_merger_hetzner_ccm.values
+
+  haproxy_values_default = <<EOT
 controller:
   kind: "Deployment"
   replicaCount: ${local.ingress_replica_count}
@@ -795,7 +803,9 @@ controller:
 %{endif~}
   EOT
 
-traefik_values = var.traefik_values != "" ? var.traefik_values : <<EOT
+haproxy_values = module.values_merger_haproxy.values
+
+traefik_values_default = <<EOT
 image:
   tag: ${var.traefik_image_tag}
 deployment:
@@ -922,9 +932,11 @@ autoscaling:
   minReplicas: ${local.ingress_replica_count}
   maxReplicas: ${local.ingress_max_replica_count}
 %{endif~}
-  EOT
+EOT
 
-rancher_values = var.rancher_values != "" ? var.rancher_values : <<EOT
+traefik_values = module.values_merger_traefik.values
+
+rancher_values_default = <<EOT
 hostname: "${var.rancher_hostname != "" ? var.rancher_hostname : var.lb_hostname}"
 replicas: ${length(local.control_plane_nodes)}
 bootstrapPassword: "${length(var.rancher_bootstrap_password) == 0 ? resource.random_password.rancher_bootstrap[0].result : var.rancher_bootstrap_password}"
@@ -934,7 +946,9 @@ global:
       enabled: false
   EOT
 
-cert_manager_values = var.cert_manager_values != "" ? var.cert_manager_values : <<EOT
+rancher_values = module.values_merger_rancher.values
+
+cert_manager_values_default = <<EOT
 crds:
   enabled: true
   keep: true
@@ -949,6 +963,8 @@ extraArgs:
   - --feature-gates=ACMEHTTP01IngressPathTypeExact=false
 %{endif~}
   EOT
+
+cert_manager_values = module.values_merger_cert_manager.values
 
 kured_options = merge({
   "reboot-command" : "/usr/bin/systemctl reboot",
