@@ -119,7 +119,7 @@ data "cloudinit_config" "autoscaler_config" {
             kubelet-arg   = concat(local.kubelet_arg, var.autoscaler_nodepools[count.index].kubelet_args, var.k3s_global_kubelet_args, var.k3s_autoscaler_kubelet_args)
             flannel-iface = local.flannel_iface
             node-label    = concat(local.default_agent_labels, [for k, v in var.autoscaler_nodepools[count.index].labels : "${k}=${v}"])
-            node-taint    = concat(local.default_agent_taints, [for taint in var.autoscaler_nodepools[count.index].taints : "${taint.key}=${tostring(taint.value)}:${taint.effect}"])
+            node-taint    = compact(concat(local.default_agent_taints, [for taint in var.autoscaler_nodepools[count.index].taints : "${taint.key}=${tostring(taint.value)}:${taint.effect}"]))
             selinux       = !var.disable_selinux
           },
           var.agent_nodes_custom_config,
@@ -159,7 +159,7 @@ data "cloudinit_config" "autoscaler_legacy_config" {
             kubelet-arg   = local.kubelet_arg
             flannel-iface = local.flannel_iface
             node-label    = concat(local.default_agent_labels, var.autoscaler_labels)
-            node-taint    = concat(local.default_agent_taints, var.autoscaler_taints)
+            node-taint    = compact(concat(local.default_agent_taints, var.autoscaler_taints))
             selinux       = !var.disable_selinux
           },
           var.agent_nodes_custom_config,

@@ -235,7 +235,7 @@ locals {
         server_type : nodepool_obj.server_type,
         location : nodepool_obj.location,
         labels : concat(local.default_control_plane_labels, nodepool_obj.swap_size != "" ? local.swap_node_label : [], nodepool_obj.labels),
-        taints : concat(local.default_control_plane_taints, nodepool_obj.taints),
+        taints : compact(concat(local.default_control_plane_taints, nodepool_obj.taints)),
         kubelet_args : nodepool_obj.kubelet_args,
         backups : nodepool_obj.backups,
         swap_size : nodepool_obj.swap_size,
@@ -263,7 +263,7 @@ locals {
         floating_ip_rdns : lookup(nodepool_obj, "floating_ip_rdns", false),
         location : nodepool_obj.location,
         labels : concat(local.default_agent_labels, nodepool_obj.swap_size != "" ? local.swap_node_label : [], nodepool_obj.labels),
-        taints : concat(local.default_agent_taints, nodepool_obj.taints),
+        taints : compact(concat(local.default_agent_taints, nodepool_obj.taints)),
         kubelet_args : nodepool_obj.kubelet_args,
         backups : lookup(nodepool_obj, "backups", false),
         swap_size : nodepool_obj.swap_size,
@@ -292,7 +292,7 @@ locals {
           floating_ip_rdns : lookup(nodepool_obj, "floating_ip_rdns", false),
           location : nodepool_obj.location,
           labels : concat(local.default_agent_labels, nodepool_obj.swap_size != "" ? local.swap_node_label : [], nodepool_obj.labels),
-          taints : concat(local.default_agent_taints, nodepool_obj.taints),
+          taints : compact(concat(local.default_agent_taints, nodepool_obj.taints)),
           kubelet_args : nodepool_obj.kubelet_args,
           backups : lookup(nodepool_obj, "backups", false),
           swap_size : nodepool_obj.swap_size,
@@ -308,7 +308,7 @@ locals {
         { for key, value in node_obj : key => value if value != null },
         {
           labels : concat(local.default_agent_labels, nodepool_obj.swap_size != "" ? local.swap_node_label : [], nodepool_obj.labels, coalesce(node_obj.labels, [])),
-          taints : concat(local.default_agent_taints, nodepool_obj.taints, coalesce(node_obj.taints, [])),
+          taints : compact(concat(local.default_agent_taints, nodepool_obj.taints, coalesce(node_obj.taints, []))),
         },
         (
           node_obj.append_index_to_node_name ? { node_name_suffix : "-${floor(tonumber(node_key))}" } : {}
