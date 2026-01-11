@@ -1051,7 +1051,7 @@ cloudinit_write_files_common = <<EOT
       sleep 3
 
       # Somehow sometimes on private-ip only setups, the
-      # interface may already be correctly names, and this
+      # interface may already be correctly named, and this
       # block should be skipped.
       if ! ip link show eth1 >/dev/null 2>&1; then
         # Find the private network interface by name, falling back to original logic.
