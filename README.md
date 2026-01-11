@@ -100,7 +100,7 @@ The easiest way is to use the [homebrew](https://brew.sh/) package manager to in
 
 |        **Tool**        |                              **Installation Command**                              |
 |:----------------------:|:----------------------------------------------------------------------------------:|
-| Homebrew (macOS/Linux) | brew install terraform packer kubectl hcloud                                       |
+| Homebrew (macOS/Linux) | brew install hashicorp/tap/terraform hashicorp/tap/packer kubectl hcloud           |
 | Yay/Paru (Arch-based)  | yay -S terraform packer kubectl hcloud<br> paru -S terraform packer kubectl hcloud |
 | APT (Debian-based)     | sudo apt install terraform packer kubectl                                          |
 | DNF (Red Hat-based)    | sudo dnf install terraform packer kubectl                                          |
