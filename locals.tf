@@ -1354,3 +1354,11 @@ cloudinit_runcmd_common = <<EOT
 EOT
 
 }
+
+# Cross-variable validations that can't be done in variable validation blocks
+check "nat_router_requires_control_plane_lb" {
+  assert {
+    condition     = var.nat_router == null || var.use_control_plane_lb
+    error_message = "When nat_router is enabled, use_control_plane_lb must be set to true."
+  }
+}

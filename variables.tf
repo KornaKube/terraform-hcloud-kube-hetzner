@@ -122,7 +122,7 @@ variable "cluster_dns_ipv4" {
 
 
 variable "nat_router" {
-  description = "Do you want to pipe all egress through a single nat router which is to be constructed?"
+  description = "Do you want to pipe all egress through a single nat router which is to be constructed? Note: Requires use_control_plane_lb=true when enabled."
   nullable    = true
   default     = null
   type = object({
@@ -131,10 +131,6 @@ variable "nat_router" {
     labels      = optional(map(string), {})
     enable_sudo = optional(bool, false)
   })
-  validation {
-    condition     = (var.nat_router != null && var.use_control_plane_lb) || (var.nat_router == null)
-    error_message = "If you enable the use of a NAT router, you must set use_control_plane_lb=true."
-  }
 }
 
 variable "nat_router_subnet_index" {
