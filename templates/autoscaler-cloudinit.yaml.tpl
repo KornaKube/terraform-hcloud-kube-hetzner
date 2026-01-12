@@ -67,8 +67,8 @@ ${cloudinit_runcmd_common}
     # Fallback to eth0 if detection fails
     PUB_IF="eth0"
   fi
-  ip route add default via 172.31.1.1 dev "$PUB_IF" metric 100 2>/dev/null || true
-  ip -6 route add default via fe80::1 dev "$PUB_IF" metric 100 2>/dev/null || true
+  ip route replace default via 172.31.1.1 dev "$PUB_IF" metric 100
+  ip -6 route replace default via fe80::1 dev "$PUB_IF" metric 100
 %{endif~}
 
 # Start the install-k3s-agent service
