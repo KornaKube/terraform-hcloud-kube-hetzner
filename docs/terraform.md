@@ -284,7 +284,7 @@
 | <a name="input_traefik_values"></a> [traefik\_values](#input\_traefik\_values) | Additional helm values file to pass to Traefik as 'valuesContent' at the HelmChart. | `string` | `""` | no |
 | <a name="input_traefik_version"></a> [traefik\_version](#input\_traefik\_version) | Version of Traefik helm chart. See https://github.com/traefik/traefik-helm-chart/releases for the available versions. | `string` | `""` | no |
 | <a name="input_use_cluster_name_in_node_name"></a> [use\_cluster\_name\_in\_node\_name](#input\_use\_cluster\_name\_in\_node\_name) | Whether to use the cluster name in the node name. | `bool` | `true` | no |
-| <a name="input_use_control_plane_lb"></a> [use\_control\_plane\_lb](#input\_use\_control\_plane\_lb) | When this is enabled, rather than the first node, all external traffic will be routed via a control-plane loadbalancer, allowing for high availability. | `bool` | `false` | no |
+| <a name="input_use_control_plane_lb"></a> [use\_control\_plane\_lb](#input\_use\_control\_plane\_lb) | Creates a dedicated load balancer for the Kubernetes API (port 6443). When enabled, kubectl and other API clients connect through this LB instead of directly to the first control plane node. Recommended for production clusters with multiple control plane nodes for high availability. Note: This is separate from the ingress load balancer for HTTP/HTTPS traffic. | `bool` | `false` | no |
 
 ### Outputs
 
