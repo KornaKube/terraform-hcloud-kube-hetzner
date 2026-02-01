@@ -49,6 +49,11 @@ resource "hcloud_primary_ip" "nat_router_primary_ipv4" {
   location      = var.nat_router.location
   auto_delete   = false
   assignee_type = "server"
+
+  # Prevent recreation when upgrading from datacenter to location attribute
+  lifecycle {
+    ignore_changes = [datacenter, location]
+  }
 }
 
 resource "hcloud_primary_ip" "nat_router_primary_ipv6" {
@@ -60,6 +65,11 @@ resource "hcloud_primary_ip" "nat_router_primary_ipv6" {
   location      = var.nat_router.location
   auto_delete   = false
   assignee_type = "server"
+
+  # Prevent recreation when upgrading from datacenter to location attribute
+  lifecycle {
+    ignore_changes = [datacenter, location]
+  }
 }
 resource "hcloud_server" "nat_router" {
   count        = var.nat_router != null ? 1 : 0

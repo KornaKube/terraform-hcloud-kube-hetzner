@@ -1129,30 +1129,28 @@ EOF
 k3s_audit_policy_update_script = <<EOF
 DATE=`date +%Y-%m-%d_%H-%M-%S`
 if [ -z "${var.k3s_audit_policy_config}" ] || [ "${var.k3s_audit_policy_config}" = " " ]; then
-  echo "No audit policy config provided, skipping audit policy setup"
-  if [ -f "/etc/rancher/k3s/audit-policy.yaml" ]; then
-    echo "Removing existing audit policy file"
-    mv /etc/rancher/k3s/audit-policy.yaml /tmp/audit-policy_removed_$DATE.yaml
-    echo "Restart of k3s service required after audit policy removal"
-    systemctl restart k3s || echo "Warning: Failed to restart k3s after audit policy removal"
-  fi
+  echo "No audit policy config provided via Terraform, skipping audit policy setup"
+  # Note: We intentionally DO NOT remove existing audit policies here.
+  # This preserves any manually-configured audit policies for backward compatibility.
+  exit 0
+fi
+
+# Config is provided, proceed with audit policy setup
+if cmp -s /tmp/audit-policy.yaml /etc/rancher/k3s/audit-policy.yaml; then
+  echo "No update required to the audit-policy.yaml file"
 else
-  if cmp -s /tmp/audit-policy.yaml /etc/rancher/k3s/audit-policy.yaml; then
-    echo "No update required to the audit-policy.yaml file"
-  else
-    if [ -f "/etc/rancher/k3s/audit-policy.yaml" ]; then
-      echo "Backing up /etc/rancher/k3s/audit-policy.yaml to /tmp/audit-policy_$DATE.yaml"
-      cp /etc/rancher/k3s/audit-policy.yaml /tmp/audit-policy_$DATE.yaml
-    fi
-    echo "Updated audit-policy.yaml detected, restart of k3s service required"
-    cp /tmp/audit-policy.yaml /etc/rancher/k3s/audit-policy.yaml
-    if systemctl is-active --quiet k3s; then
-      systemctl restart k3s || (echo "Error: Failed to restart k3s. Restoring /etc/rancher/k3s/audit-policy.yaml from backup" && cp /tmp/audit-policy_$DATE.yaml /etc/rancher/k3s/audit-policy.yaml && systemctl restart k3s)
-    else
-      echo "k3s service is not active, skipping restart"
-    fi
-    echo "k3s service restarted successfully with new audit policy"
+  if [ -f "/etc/rancher/k3s/audit-policy.yaml" ]; then
+    echo "Backing up /etc/rancher/k3s/audit-policy.yaml to /tmp/audit-policy_$DATE.yaml"
+    cp /etc/rancher/k3s/audit-policy.yaml /tmp/audit-policy_$DATE.yaml
   fi
+  echo "Updated audit-policy.yaml detected, restart of k3s service required"
+  cp /tmp/audit-policy.yaml /etc/rancher/k3s/audit-policy.yaml
+  if systemctl is-active --quiet k3s; then
+    systemctl restart k3s || (echo "Error: Failed to restart k3s. Restoring /etc/rancher/k3s/audit-policy.yaml from backup" && cp /tmp/audit-policy_$DATE.yaml /etc/rancher/k3s/audit-policy.yaml && systemctl restart k3s)
+  else
+    echo "k3s service is not active, skipping restart"
+  fi
+  echo "k3s service restarted successfully with new audit policy"
 fi
 
 # Ensure audit log directory exists with proper permissions
