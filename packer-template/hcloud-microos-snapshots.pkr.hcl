@@ -48,8 +48,21 @@ variable "sysctl_config_file" {
   default = ""
 }
 
+# Choose which kernel to use: "default" for the rolling release kernel or "longterm" for LTS kernel
+variable "kernel_type" {
+  type    = string
+  default = "default"
+  validation {
+    condition     = contains(["longterm", "default"], var.kernel_type)
+    error_message = "The kernel_type must be either longterm or default."
+  }
+}
+
 locals {
-  needed_packages = join(" ", concat(["restorecond policycoreutils policycoreutils-python-utils setools-console audit bind-utils wireguard-tools fuse open-iscsi nfs-client xfsprogs cryptsetup lvm2 git cifs-utils bash-completion mtr tcpdump udica qemu-guest-agent"], var.packages_to_install))
+  # Only install kernel-longterm if selected; kernel-default is already in the base image
+  kernel_package_list = var.kernel_type == "longterm" ? ["kernel-longterm"] : []
+
+  needed_packages = join(" ", concat(local.kernel_package_list, ["restorecond", "policycoreutils", "policycoreutils-python-utils", "setools-console", "audit", "bind-utils", "wireguard-tools", "fuse", "open-iscsi", "nfs-client", "xfsprogs", "cryptsetup", "lvm2", "git", "cifs-utils", "bash-completion", "mtr", "tcpdump", "udica", "qemu-guest-agent"], var.packages_to_install))
 
   # Read sysctl config if file path is provided, otherwise empty (base64 encoded for safe transfer)
   sysctl_config_content = var.sysctl_config_file != "" ? base64encode(file(var.sysctl_config_file)) : ""
@@ -68,6 +81,14 @@ locals {
     sleep 1 && udevadm settle && reboot
   EOT
 
+  # Kernel switching commands: remove kernel-default and lock it when using longterm
+  # This ensures GRUB always boots the longterm kernel without complex configuration
+  kernel_switch_commands = var.kernel_type == "longterm" ? join("\n", [
+    "zypper rm -y kernel-default",
+    "zypper addlock kernel-default",
+    "grub2-mkconfig -o /boot/grub2/grub.cfg"
+  ]) : "true"
+
   install_packages = <<-EOT
     set -ex
     echo "First reboot successful, installing needed packages..."
@@ -81,6 +102,7 @@ locals {
     restorecon -Rv /var/lib
     setenforce 1
     ${local.sysctl_commands}
+    ${local.kernel_switch_commands}
     EOF
     sleep 1 && udevadm settle && reboot
   EOT
