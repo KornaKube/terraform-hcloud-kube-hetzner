@@ -26,6 +26,8 @@ module "control_planes" {
   k3s_registries_update_script     = local.k3s_registries_update_script
   k3s_kubelet_config               = var.k3s_kubelet_config
   k3s_kubelet_config_update_script = local.k3s_kubelet_config_update_script
+  k3s_audit_policy_config          = var.k3s_audit_policy_config
+  k3s_audit_policy_update_script   = local.k3s_audit_policy_update_script
   cloudinit_write_files_common     = local.cloudinit_write_files_common
   cloudinit_runcmd_common          = local.cloudinit_runcmd_common
   swap_size                        = each.value.swap_size
@@ -210,6 +212,36 @@ resource "null_resource" "control_plane_config" {
   ]
 }
 
+resource "null_resource" "audit_policy" {
+  for_each = local.control_plane_nodes
+
+  triggers = {
+    control_plane_id = module.control_planes[each.key].id
+    audit_policy     = sha1(var.k3s_audit_policy_config)
+  }
+
+  connection {
+    user           = "root"
+    private_key    = var.ssh_private_key
+    agent_identity = local.ssh_agent_identity
+    host           = local.control_plane_ips[each.key]
+    port           = var.ssh_port
+  }
+
+  provisioner "file" {
+    content     = var.k3s_audit_policy_config
+    destination = "/tmp/audit-policy.yaml"
+  }
+
+  provisioner "remote-exec" {
+    inline = [local.k3s_audit_policy_update_script]
+  }
+
+  depends_on = [
+    null_resource.first_control_plane,
+    hcloud_network_subnet.control_plane
+  ]
+}
 
 resource "null_resource" "authentication_config" {
   for_each = local.control_plane_nodes

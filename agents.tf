@@ -27,6 +27,8 @@ module "agents" {
   cloudinit_write_files_common     = local.cloudinit_write_files_common
   k3s_kubelet_config               = var.k3s_kubelet_config
   k3s_kubelet_config_update_script = local.k3s_kubelet_config_update_script
+  k3s_audit_policy_config          = ""
+  k3s_audit_policy_update_script   = ""
   cloudinit_runcmd_common          = local.cloudinit_runcmd_common
   swap_size                        = each.value.swap_size
   zram_size                        = each.value.zram_size
