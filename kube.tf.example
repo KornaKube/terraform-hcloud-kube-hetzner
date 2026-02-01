@@ -429,7 +429,7 @@ module "kube-hetzner" {
   # Example:
   #
   # cluster_autoscaler_image = "registry.k8s.io/autoscaling/cluster-autoscaler"
-  # cluster_autoscaler_version = "v1.30.3"
+  # cluster_autoscaler_version = "v1.33.3"
   # cluster_autoscaler_log_level = 4
   # cluster_autoscaler_log_to_stderr = true
   # cluster_autoscaler_stderr_threshold = "INFO"
@@ -676,13 +676,13 @@ module "kube-hetzner" {
 
   # Allows you to specify the k3s version. If defined, supersedes initial_k3s_channel.
   # See https://github.com/k3s-io/k3s/releases for the available versions.
-  # install_k3s_version = "v1.30.2+k3s2"
+  # install_k3s_version = "v1.33.7+k3s1"
 
   # Allows you to specify either stable, latest, testing or supported minor versions.
   # see https://rancher.com/docs/k3s/latest/en/upgrades/basic/ and https://update.k3s.io/v1-release/channels
   # ⚠️ If you are going to use Rancher addons for instance, it's always a good idea to fix the kube version to one minor version below the latest stable,
-  #     e.g. v1.29 instead of the stable v1.30.
-  # The default is "v1.30".
+  #     e.g. v1.32 instead of the stable v1.33.
+  # The default is "v1.33".
   # initial_k3s_channel = "stable"
 
   # Allows to specify the version of the System Upgrade Controller for automated upgrades of k3s
