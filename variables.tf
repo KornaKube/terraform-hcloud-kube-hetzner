@@ -459,6 +459,8 @@ variable "autoscaler_nodepools" {
       value  = string
       effect = string
     })), [])
+    swap_size = optional(string, "")
+    zram_size = optional(string, "")
   }))
   default = []
 }
