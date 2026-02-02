@@ -11,8 +11,12 @@
     A highly optimized, easy-to-use, auto-upgradable, HA-default & Load-Balanced, Kubernetes cluster powered by k3s-on-MicroOS and deployed for peanuts on <a href="https://hetzner.com" target="_blank">Hetzner Cloud</a> 🤑
   </p>
   <hr />
-    <p align="center">
-    🔥 Introducing <a href="https://chatgpt.com/g/g-67df95cd1e0c8191baedfa3179061581-kh-assistant" target="_blank">KH Assistant</a>, our Custom-GPT kube.tf generator to get you going fast, just tell it what you need! 🚀 (Updated: 28th July 2025)
+  <p align="center">
+    💖 <strong>Love this project?</strong> Please consider <a href="https://github.com/sponsors/mysticaltech" target="_blank">sponsoring</a> to help me dedicate more time to maintenance and new features!
+  </p>
+  <hr />
+  <p align="center">
+    🔥 Try <a href="https://chatgpt.com/g/g-67df95cd1e0c8191baedfa3179061581-kh-assistant" target="_blank"><strong>KH Assistant</strong></a> — our AI-powered kube.tf generator. Just describe your cluster needs! 🚀 <em>(Updated: 2nd Feb 2026)</em>
   </p>
   <hr />
 </p>
@@ -33,6 +37,7 @@
 - [Takedown](#takedown)
 - [Upgrading the Module](#upgrading-the-module)
 - [Contributing](#contributing)
+- [💖 Support This Project](#-support-this-project)
 - [Acknowledgements](#acknowledgements)
 
 ---
@@ -1209,6 +1214,28 @@ Code contributions are very much **welcome**.
 1. Commit your Changes (`git commit -m 'Add some AmazingFeature')
 1. Push to the Branch (`git push origin AmazingFeature`)
 1. Open a Pull Request targeting the `staging` branch.
+
+<!-- SUPPORT -->
+
+## 💖 Support This Project
+
+If Kube-Hetzner saves you time and money, please consider supporting its development:
+
+<p align="center">
+  <a href="https://github.com/sponsors/mysticaltech">
+    <img src="https://img.shields.io/badge/Sponsor-❤️-EA4AAA?style=for-the-badge&logo=github-sponsors" alt="Sponsor on GitHub">
+  </a>
+</p>
+
+Your sponsorship helps me dedicate more time to:
+- 🐛 Fixing bugs and responding to issues
+- 🚀 Adding new features and improvements
+- 📚 Maintaining documentation
+- 🔒 Security updates and best practices
+
+**Every contribution matters** — whether it's a one-time donation or monthly sponsorship. Thank you for keeping this project alive! 🙏
+
+---
 
 <!-- ACKNOWLEDGEMENTS -->
 
