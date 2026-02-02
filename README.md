@@ -11,10 +11,10 @@
 
 A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k3s on MicroOS<br>deployed for peanuts on [Hetzner Cloud](https://hetzner.com)
 
-[![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.10-844FBA?style=flat-square&logo=terraform)](https://terraform.io)
-[![OpenTofu](https://img.shields.io/badge/OpenTofu-Compatible-FFDA18?style=flat-square&logo=opentofu)](https://opentofu.org)
-[![K3s](https://img.shields.io/badge/K3s-v1.33-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)
-[![License](https://img.shields.io/github/license/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&color=blue)](LICENSE)
+[![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.10-844FBA?style=flat-square&logo=terraform)](https://terraform.io)&nbsp;&nbsp;
+[![OpenTofu](https://img.shields.io/badge/OpenTofu-Compatible-FFDA18?style=flat-square&logo=opentofu)](https://opentofu.org)&nbsp;&nbsp;
+[![K3s](https://img.shields.io/badge/K3s-v1.35-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)&nbsp;&nbsp;
+[![License](https://img.shields.io/github/license/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&color=blue)](LICENSE)&nbsp;&nbsp;
 [![GitHub Stars](https://img.shields.io/github/stars/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&logo=github)](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/stargazers)
 
 ---
