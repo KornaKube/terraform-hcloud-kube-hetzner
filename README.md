@@ -23,7 +23,8 @@ A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k
 <tr>
 <td align="center" colspan="2">
 
-**Sponsored by**&nbsp;&nbsp;&nbsp;<a href="https://www.hetzner.com"><img src="https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/raw/master/.images/hetzner-logo.svg" alt="Hetzner" height="20"></a>&nbsp;&nbsp;&nbsp;Server · Cloud · Hosting
+**Sponsored by**<br><br>
+<a href="https://www.hetzner.com"><img src="https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/raw/master/.images/hetzner-logo.svg" alt="Hetzner — Server · Cloud · Hosting" height="45"></a>
 
 </td>
 </tr>
