@@ -397,7 +397,6 @@ Configure via helm values variables:
 - `traefik_values`
 - `nginx_values`
 - `longhorn_values`
-- `longhorn_merge_values`
 - `rancher_values`
 
 See `kube.tf.example` for examples.
