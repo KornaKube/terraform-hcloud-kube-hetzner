@@ -69,6 +69,7 @@ If you created a NAT router **before v2.19.0** (when the hcloud provider used th
 ### 🐛 Bug Fixes
 
 - **Audit Policy Bastion Connection** _(v2.19.1)_ - Fixed missing bastion SSH settings in `audit_policy` provisioner, enabling audit policy deployment for NAT router / private network setups (#2042)
+- **Longhorn Hotfix Tag Guidance** - Clarified `longhorn_version` as chart version and documented `longhorn_merge_values` for targeted Longhorn image hotfix tags (e.g. manager/instance-manager) (#2054)
 - **Traefik v34 Compatibility** - Fixed HTTP to HTTPS redirection config for Traefik Helm Chart v34+ (#2028)
 - **NAT Router IP Drift** - Fixed infinite replacement cycle by migrating from deprecated `datacenter` to `location` (#2021)
 - **SELinux YAML Parsing** - Fixed cloud-init SCHEMA_ERROR caused by improper YAML formatting of SELinux policy
