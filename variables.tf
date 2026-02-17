@@ -165,12 +165,12 @@ variable "nat_router" {
   nullable    = true
   default     = null
   type = object({
-    server_type         = string
-    location            = string
-    labels              = optional(map(string), {})
-    enable_sudo         = optional(bool, false)
-    enable_redundancy   = optional(bool, false)
-    standby_location    = optional(string, "")
+    server_type       = string
+    location          = string
+    labels            = optional(map(string), {})
+    enable_sudo       = optional(bool, false)
+    enable_redundancy = optional(bool, false)
+    standby_location  = optional(string, "")
   })
 
   validation {
@@ -181,6 +181,7 @@ variable "nat_router" {
 
 variable "nat_router_hcloud_token" {
   description = "API Token used by the nat-router to change ip assignment when nat_router.enable_redundancy is true."
+  type        = string
   default     = ""
   sensitive   = true
 

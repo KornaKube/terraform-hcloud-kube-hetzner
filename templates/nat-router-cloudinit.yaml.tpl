@@ -51,13 +51,19 @@ write_files:
     permissions: '0700'
     content: |
       #!/bin/bash
-      INTERFACE="enp7s0"
       TARGET_IP="${ my_private_ip }"
-      echo "Waiting for $TARGET_IP to appear on $INTERFACE..."
-      until ip addr show "$INTERFACE" | grep -q "$TARGET_IP"; do
+
+      echo "Waiting for $TARGET_IP to appear on private interface..."
+      while true; do
+        INTERFACE=$(ip -o -4 addr show | awk -v target_ip="$TARGET_IP" '$4 ~ ("^" target_ip "/") {print $2; exit}')
+        if [ -n "$INTERFACE" ]; then
+          break
+        fi
         sleep 1
       done
-      echo "IP is up. Proceeding."
+
+      sed "s/__NAT_PRIVATE_IFACE__/$INTERFACE/g" /etc/keepalived/keepalived.conf.tmpl > /etc/keepalived/keepalived.conf
+      echo "Private interface is $INTERFACE, keepalived config rendered."
   - path: /etc/systemd/system/wait-for-private-ip.service
     content: |
       [Unit]
@@ -78,10 +84,11 @@ write_files:
       # Require the specific IP wait service
       Requires=wait-for-private-ip.service
       After=wait-for-private-ip.service
-  - path: /etc/keepalived/keepalived.conf
+  - path: /etc/keepalived/keepalived.conf.tmpl
     content: |
       global_defs {
           enable_script_security
+          script_user keepalived_script
           max_auto_priority
       }
 
@@ -94,7 +101,7 @@ write_files:
 
       vrrp_instance VI_NAT {
           state BACKUP
-          interface enp7s0
+          interface __NAT_PRIVATE_IFACE__
           virtual_router_id 51
           priority ${ priority }
           advert_int 1
@@ -104,7 +111,7 @@ write_files:
             ${ peer_private_ip }
           }
           virtual_ipaddress {
-            ${ vip } dev enp7s0
+            ${ vip } dev __NAT_PRIVATE_IFACE__
           }
           authentication {
             auth_type PASS
@@ -145,7 +152,7 @@ write_files:
       #!/bin/bash
       set -euo pipefail
 
-      # Load environment variables, noticable HCLOUD_TOKEN
+      # Load environment variables, including HCLOUD_TOKEN
       ENV_FILE="/etc/keepalived/hcloud.env"
       if [ -f "$ENV_FILE" ]
       then
@@ -169,9 +176,9 @@ write_files:
       # Get peer id by server list filtered by role=nat_router and provided peer IP
       PEER_ID=$(curl -f -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
         "https://api.hetzner.cloud/v1/servers?label_selector=role=nat_router" | \
-        jq -r ".servers[] | select(.private_net[].ip == \"$PEER_IP\") | .id")
+        jq -r --arg peer_ip "$PEER_IP" --arg net_id "$NET_ID" '.servers[] | select(any(.private_net[]; .ip == $peer_ip and (.network | tostring) == $net_id)) | .id' | head -n 1)
 
-      if [ -z "$PEER_ID" ]
+      if [ -z "$PEER_ID" ] || [ "$PEER_ID" = "null" ]
       then
         exit 1
       fi
