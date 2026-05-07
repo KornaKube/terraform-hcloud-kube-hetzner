@@ -1618,6 +1618,60 @@ last reboot
 uptime
 ```
 
+### K3s certificate expiry: `kubectl` works but controllers do not reconcile
+
+If `kubectl` can still read and patch objects but rollouts never progress, check
+whether K3s component certificates expired on the control-plane nodes. One
+common symptom is a Deployment whose spec was accepted, but whose
+`observedGeneration` never catches up:
+
+```sh
+kubectl get deploy <name> -o jsonpath='generation={.metadata.generation} observed={.status.observedGeneration} updated={.status.updatedReplicas} ready={.status.readyReplicas} replicas={.status.replicas}{"\n"}'
+```
+
+Other useful checks:
+
+```sh
+kubectl get events --sort-by=.lastTimestamp | grep CertificateExpirationWarning
+
+ssh root@<control-plane-ip> -i /path/to/private_key -o IdentitiesOnly=yes
+k3s certificate check --output table
+journalctl -u k3s -n 100 --no-pager | grep -E 'certificate has expired|tls: bad certificate|leaderelection'
+```
+
+Typical log lines include `tls: failed to verify certificate: x509: certificate
+has expired` from `leaderelection.go`, or etcd peer messages such as
+`remote error: tls: bad certificate`. In that state, the API server may still
+answer some requests, while the scheduler/controller-manager/etcd leadership
+path is unhealthy.
+
+K3s renews expired or near-expiry leaf certificates on service startup. Restart
+the control-plane nodes one at a time, wait for each node to return, and restart
+the node used by your current kubeconfig endpoint last if possible. Then check
+that `k3s certificate check --output table` no longer shows expired leaf
+certificates. `WARNING` rows for certs that are near expiry can remain; `EXPIRED`
+rows should be gone.
+
+```sh
+for host in <control-plane-ip-1> <control-plane-ip-2> <control-plane-ip-3>; do
+  ssh root@"${host}" -i /path/to/private_key -o IdentitiesOnly=yes \
+    'systemctl restart k3s'
+  ssh root@"${host}" -i /path/to/private_key -o IdentitiesOnly=yes \
+    'systemctl is-active k3s && k3s certificate check --output table | grep -E "EXPIRED|WARNING" || true'
+done
+```
+
+If automatic renewal on restart is not enough, use the
+[K3s manual rotation flow](https://docs.k3s.io/cli/certificate) on each server
+(`systemctl stop k3s`, `k3s certificate rotate`, `systemctl start k3s`). Rotate
+servers first, then agents. After the controller manager observes the pending
+Deployment generation, rerun the rollout check:
+
+```sh
+kubectl rollout status deploy/<name> --timeout=300s
+kubectl get pods -l app=<label> -o wide
+```
+
 ---
 
 ## 💣 Takedown
