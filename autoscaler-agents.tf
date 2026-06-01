@@ -92,16 +92,31 @@ resource "terraform_data" "configure_autoscaler" {
   # of KB), client-side apply would fail with
   # "metadata.annotations: Too long: may not be more than 262144 bytes".
   provisioner "remote-exec" {
-    inline = ["kubectl apply --server-side --force-conflicts -f /tmp/autoscaler.yaml"]
+    inline = ["kubectl apply --server-side --field-manager=kube-hetzner --force-conflicts -f /tmp/autoscaler.yaml"]
   }
 
   depends_on = [
+    terraform_data.autoscaler_version_contract,
     hcloud_load_balancer.cluster,
     terraform_data.control_planes,
     random_password.rancher_bootstrap,
     hcloud_volume.longhorn_volume
   ]
 }
+
+resource "terraform_data" "autoscaler_version_contract" {
+  count = length(var.autoscaler_nodepools) > 0 ? 1 : 0
+
+  input = var.cluster_autoscaler_version
+
+  lifecycle {
+    precondition {
+      condition     = try(provider::semvers::compare(trimprefix(var.cluster_autoscaler_version, "v"), "1.33.0"), -1) >= 0
+      error_message = "autoscaler_nodepools require cluster_autoscaler_version v1.33.0 or newer because kube-hetzner mounts the Hetzner cluster config through HCLOUD_CLUSTER_CONFIG_FILE."
+    }
+  }
+}
+
 moved {
   from = null_resource.configure_autoscaler
   to   = terraform_data.configure_autoscaler
