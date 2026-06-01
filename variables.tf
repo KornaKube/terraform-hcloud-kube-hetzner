@@ -1410,7 +1410,7 @@ variable "flannel_backend" {
   description = "Override the flannel backend used by k3s. When set, this takes precedence over enable_wireguard. Valid values: vxlan, host-gw, wireguard-native. See https://docs.k3s.io/networking/basic-network-options for details. Use wireguard-native for Robot nodes with vSwitch to avoid MTU issues."
 
   validation {
-    condition     = var.flannel_backend == null || contains(["vxlan", "host-gw", "wireguard-native"], var.flannel_backend)
+    condition     = var.flannel_backend == null ? true : contains(["vxlan", "host-gw", "wireguard-native"], var.flannel_backend)
     error_message = "The flannel_backend must be one of: vxlan, host-gw, wireguard-native."
   }
 }
