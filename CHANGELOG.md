@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+### 🐛 Bug Fixes
+
+- **NAT Router Primary IP Warning** - Removed the deprecated fixed `assignee_type` argument from NAT router primary IP resources to avoid hcloud provider warnings.
 
 ---
 
