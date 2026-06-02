@@ -95,4 +95,3 @@ jobs:
           name: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
           bodyFile: release_body.md
-          appendBody: true
