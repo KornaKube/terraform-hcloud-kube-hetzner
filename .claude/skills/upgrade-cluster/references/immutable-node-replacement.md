@@ -41,6 +41,25 @@ Capture these facts in notes:
 - application readiness URL or command
 - current firewall exposure for SSH and Kubernetes API
 
+## SSH Reachability And Identity
+
+Treat SSH reachability as a hard replacement invariant: every live node should be reachable by the operator during maintenance. Diagnose firewall and authentication separately.
+
+```bash
+nc -vz -w 5 <node-ip> 22
+ssh root@<node-ip> -i <path-to-private-key-from-kube.tf> -o StrictHostKeyChecking=no "hostname; id; systemctl is-active sshd || systemctl is-active ssh || true"
+```
+
+Use the exact private key configured in the target root's `kube.tf`/vars. This follows the upstream kube-hetzner README pattern: `ssh root@<control-plane-ip> -i /path/to/private_key -o StrictHostKeyChecking=no`.
+
+If the TCP probe succeeds and SSH returns `Permission denied (publickey,keyboard-interactive)`, the firewall is not the blocker. The likely cause is local identity selection or missing authorized keys. If local SSH config pins another identity, plain `ssh root@<node-ip>` can fail even though the node and firewall are healthy. Use the key from the target root's `ssh_private_key` explicitly:
+
+```bash
+ssh root@<node-ip> -i /path/to/private_key -o StrictHostKeyChecking=no "hostname"
+```
+
+Only change firewall rules after proving the TCP path is closed or the HCloud firewall is not attached to the node. Do not open broad firewall access to solve an SSH key/authentication failure.
+
 ## Hetzner Capacity And Type Selection
 
 Do not assume a server type is still placeable because it exists in docs or because old nodes of that type are running. Verify availability, then let a real create/apply be the capacity proof.
@@ -74,6 +93,8 @@ Kube-hetzner nodepool lists are stateful. Treat list order as infrastructure ide
   - remove old control planes one at a time
   - close firewall access
 - If a plan shows unexpected destruction/replacement beyond the intended nodepool phase, stop and root-cause before applying.
+
+Kube-hetzner v2.20 normalizes the private interface to `eth1` on fresh nodes. During a mixed old/fresh fleet, long-lived existing nodes may still expose the private network under names such as `enp7s0`. If K3s restarts on those nodes and logs `unable to find interface eth1`, run the module-provided `/etc/cloud/rename_interface.sh` on the affected existing nodes, restart `k3s` or `k3s-agent`, and re-check `/readyz` before proceeding. Do not continue node replacement while the API is only partially ready.
 
 For the first control-plane nodepool:
 

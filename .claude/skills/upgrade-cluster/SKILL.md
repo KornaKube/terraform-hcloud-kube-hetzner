@@ -64,6 +64,25 @@ kubectl --kubeconfig <kubeconfig> get pods -A -o wide
 kubectl --kubeconfig <kubeconfig> get --raw='/readyz?verbose'
 ```
 
+### SSH Access Sanity
+
+A live node must be reachable operationally by SSH during replacement. Check firewall reachability separately from SSH authentication:
+
+```bash
+nc -vz -w 5 <node-ip> 22
+ssh root@<node-ip> -i <path-to-private-key-from-kube.tf> -o StrictHostKeyChecking=no "hostname; id; systemctl is-active sshd || systemctl is-active ssh || true"
+```
+
+If `nc` reaches port 22 and SSH returns `Permission denied (publickey,keyboard-interactive)`, the firewall path is open and the problem is identity selection or authorized keys. Do not loosen firewall rules to fix an auth failure.
+
+Use the exact private key configured in the target root's `kube.tf`/vars. This follows the upstream kube-hetzner README pattern: `ssh root@<control-plane-ip> -i /path/to/private_key -o StrictHostKeyChecking=no`.
+
+If local SSH config pins another identity, plain `ssh root@<node-ip>` can fail even though the node and firewall are healthy. Use the key from the target root's `ssh_private_key`, for example:
+
+```bash
+ssh root@<node-ip> -i /path/to/private_key -o StrictHostKeyChecking=no "hostname"
+```
+
 If there are singleton stateful workloads or strict PDBs, decide upgrade behavior before any apply:
 
 - `system_upgrade_use_drain = true`: safer for replicated stateless workloads, but can stall or move singleton stateful workloads.
@@ -100,6 +119,31 @@ If the module changed resource ownership or addresses:
 - Migrate one live resource at a time.
 - Re-run `terraform plan` after every state operation.
 - Do not apply broad plans while state addresses are still ambiguous.
+
+### Existing Node Interface Check
+
+Kube-hetzner v2.20 expects the private network interface to be named `eth1`. Fresh nodes get this from cloud-init, but long-lived pre-v2.20 nodes may still expose the private interface as a predictable kernel name such as `enp7s0`. If K3s restarts and `/readyz` stalls with logs like `unable to find interface eth1`, fix the existing nodes before continuing.
+
+Verify every existing node before treating module convergence as healthy:
+
+```bash
+ssh root@<node-ip> "hostname; ip -br addr; systemctl is-active k3s k3s-agent 2>/dev/null || true"
+ssh root@<node-ip> "journalctl -u k3s -u k3s-agent -n 80 --no-pager | rg 'unable to find interface eth1|server is not ready' || true"
+```
+
+If `/etc/cloud/rename_interface.sh` exists on the node, use the module-provided script so the repair matches kube-hetzner's invariant:
+
+```bash
+ssh root@<node-ip> "if ! ip link show eth1 >/dev/null 2>&1; then /etc/cloud/rename_interface.sh; fi; ip -br addr"
+ssh root@<node-ip> "systemctl restart k3s || systemctl restart k3s-agent"
+```
+
+After repair, require the normal proof again:
+
+```bash
+kubectl --kubeconfig <kubeconfig> get nodes -o wide
+kubectl --kubeconfig <kubeconfig> get --raw='/readyz?verbose'
+```
 
 ## Phase 2: K3s Upgrade
 
