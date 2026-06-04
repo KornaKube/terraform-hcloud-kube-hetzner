@@ -1107,6 +1107,7 @@ This project includes [agent skills](https://agentskills.io) in `.claude/skills/
 | `/fix-issue <num>` | Guided workflow for fixing GitHub issues |
 | `/review-pr <num>` | Security-focused PR review |
 | `/test-changes` | Run terraform fmt, validate, plan |
+| `/upgrade-cluster <terraform-root>` | Safety-first workflow for live module and K3s cluster upgrades |
 
 **PRs to improve these skills are welcome!** See `.claude/skills/` for the skill definitions.
 
