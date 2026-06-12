@@ -764,6 +764,8 @@ spec:
 [Full Traefik + Cert-Manager guide](https://traefik.io/blog/secure-web-applications-with-traefik-proxy-cert-manager-and-lets-encrypt/)
 
 > **Ingress-Nginx with HTTP challenge:** Add `load_balancer_hostname = "cluster.example.org"` to work around [this known issue](https://github.com/cert-manager/cert-manager/issues/466).
+
+> **F5 NGINX Ingress Controller:** `ingress_controller = "nginx"` installs the Kubernetes ingress-nginx controller. To run the F5 controller, set `ingress_controller = "none"` and install F5's chart separately.
 </details>
 
 <details>
@@ -1737,6 +1739,7 @@ This project includes [agent skills](https://agentskills.io) in `.claude/skills/
 | `/review-pr <num>` | Security-focused PR review |
 | `/test-changes` | Run terraform fmt, validate, plan |
 | `/migrate-v2-to-v3 <terraform-root>` | Guided v2 to v3 migration and plan review |
+| `/upgrade-cluster <terraform-root>` | Safety-first workflow for live module and Kubernetes cluster upgrades |
 
 **PRs to improve these skills are welcome!** See `.claude/skills/` for the skill definitions.
 
