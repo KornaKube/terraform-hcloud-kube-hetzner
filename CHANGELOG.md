@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+---
+
+## [2.21.0] - 2026-07-04
+
 ### ⚠️ Upgrade Notes
 
 - **One-time kustomization re-run**: the kustomization trigger state now includes the new deploy toggles and the rendered `kustomization.yaml` hash, so the first `terraform apply` after upgrading re-runs the post-install kustomization once (an idempotent `kubectl apply -k` — no resources are destroyed or recreated). Verified on a live fresh-apply gate: all nodes Ready, upgrade tooling deployed under defaults, toggle flips correctly re-run the kustomization.
