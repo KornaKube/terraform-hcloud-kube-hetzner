@@ -166,6 +166,7 @@ write_files:
       NET_ID="${ network_id }"
       VIP="${ vip }"
       PEER_IP="${ peer_private_ip }"
+      CLUSTER_NAME="${ cluster_name }"
 
       # Get own hcloud server id by calling metadata service
       MY_ID=$(curl -f -s http://169.254.169.254/hetzner/v1/metadata/instance-id)
@@ -175,9 +176,9 @@ write_files:
         exit 1
       fi
 
-      # Get peer id by server list filtered by role=nat_router and provided peer IP
+      # Get peer id by server list filtered by this cluster's NAT routers and provided peer IP
       PEER_ID=$(curl -f -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
-        "https://api.hetzner.cloud/v1/servers?label_selector=role=nat_router" | \
+        "https://api.hetzner.cloud/v1/servers?label_selector=role=nat_router,cluster=$CLUSTER_NAME" | \
         jq -r --arg peer_ip "$PEER_IP" --arg net_id "$NET_ID" '.servers[] | select(any(.private_net[]; .ip == $peer_ip and (.network | tostring) == $net_id)) | .id' | head -n 1)
 
       if [ -z "$PEER_ID" ] || [ "$PEER_ID" = "null" ]

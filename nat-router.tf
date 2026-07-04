@@ -114,6 +114,7 @@ data "cloudinit_config" "nat_router_config" {
         my_private_ip              = local.nat_router_ip[count.index]
         peer_private_ip            = var.nat_router.enable_redundancy ? local.nat_router_ip[(count.index == 0 ? 1 : 0)] : null
         hcloud_token               = var.nat_router_hcloud_token
+        cluster_name               = var.cluster_name
         network_id                 = data.hcloud_network.k3s.id
         vip                        = local.nat_gateway_ip
         vip_auth_pass              = var.nat_router.enable_redundancy ? random_password.nat_router_vip_auth_pass[0].result : ""
@@ -199,10 +200,9 @@ resource "hcloud_server" "nat_router" {
   }
 
   labels = merge(
-    {
-      role = "nat_router"
-    },
     try(var.nat_router.labels, {}),
+    local.labels,
+    local.labels_nat_router,
   )
 
   lifecycle {
@@ -515,6 +515,7 @@ resource "terraform_data" "nat_router_config" {
       NET_ID="${data.hcloud_network.k3s.id}"
       VIP="${local.nat_gateway_ip}"
       PEER_IP="${local.nat_router_ip[count.index == 0 ? 1 : 0]}"
+      CLUSTER_NAME="${var.cluster_name}"
 
       MY_ID=$(curl -f -s http://169.254.169.254/hetzner/v1/metadata/instance-id)
 
@@ -524,7 +525,7 @@ resource "terraform_data" "nat_router_config" {
       fi
 
       PEER_ID=$(curl -f -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
-        "https://api.hetzner.cloud/v1/servers?label_selector=role=nat_router" | \
+        "https://api.hetzner.cloud/v1/servers?label_selector=role=nat_router,cluster=$CLUSTER_NAME" | \
         jq -r --arg peer_ip "$PEER_IP" --arg net_id "$NET_ID" '.servers[] | select(any(.private_net[]; .ip == $peer_ip and (.network | tostring) == $net_id)) | .id' | head -n 1)
 
       if [ -z "$PEER_ID" ] || [ "$PEER_ID" = "null" ]

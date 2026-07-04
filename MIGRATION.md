@@ -17,17 +17,23 @@ For the full operator workflow, use
    uv run python /path/to/kube-hetzner/scripts/v2_to_v3_migration_assistant.py --root .
    ```
 3. Rename/remove v2-only inputs listed below.
-4. Pin the module to your target v3 tag.
-5. Reinitialize providers and modules:
+4. Decide your k3s upgrade policy before the first v3 apply:
+   - v2 defaulted `k3s_channel` to `v1.33`.
+   - v3 defaults `k3s_channel` to `stable`, and
+     `automatically_upgrade_kubernetes` still defaults to `true`.
+   - Either pin `k3s_version`, set `k3s_channel = "v1.33"` to keep the v2
+     minor channel intentionally, or consciously accept following `stable`.
+5. Pin the module to your target v3 tag.
+6. Reinitialize providers and modules:
    ```bash
    terraform init -upgrade
    ```
-6. Validate and review the plan before applying:
+7. Validate and review the plan before applying:
    ```bash
    terraform validate
    terraform plan
    ```
-7. Apply only after you understand every `replace`/`destroy` action.
+8. Apply only after you understand every `replace`/`destroy` action.
 
 Stop immediately if Terraform proposes unexpected replacements for networks,
 subnets, load balancers, servers, primary IPs, placement groups, or volumes.
@@ -46,7 +52,30 @@ Before applying a v3 plan:
 - Treat private-only, Robot/vSwitch, existing-network, external-network,
   Tailscale/overlay, Longhorn/volume-heavy, autoscaler, and multinetwork
   clusters as high-risk upgrade topologies.
+- Out-of-band root SSH keys survive by default in v3: kube-hetzner now merges
+  `ssh_public_key` and `ssh_additional_public_keys` into
+  `/root/.ssh/authorized_keys` without deleting unknown existing lines. Set
+  `ssh_authorized_keys_exclusive = true` only if you want strict replacement
+  semantics with exactly the module-managed keys.
 - Prefer blue/green migration when the plan is hard to explain.
+
+### What the first v3 apply does to existing nodes
+
+The first v3 apply is not purely local Terraform bookkeeping:
+
+- `terraform_data.initial_readiness` SSHes to every existing control-plane and
+  agent node and waits for systemd readiness. Private-only clusters, custom SSH
+  endpoints, and bastion-only operators must have working Terraform reachability
+  before applying.
+- `terraform_data.ssh_authorized_keys` reconciles `/root/.ssh/authorized_keys`
+  from `ssh_public_key` and `ssh_additional_public_keys`; see the companion
+  authorized-keys reconciliation migration note before applying if nodes carry
+  manual root keys.
+- The module k3s/RKE2 kustomization may rerun once as v3 migrates trigger
+  state and rendered addon payloads.
+- Validation-only `terraform_data` resources can appear or churn in the plan.
+  Treat them as plan-time contract/state migration noise unless they are paired
+  with provisioners or unexpected infrastructure actions.
 
 ### v3 support levels
 
@@ -89,6 +118,7 @@ Rename these inputs in your `kube.tf`:
 | `secrets_encryption` | `enable_secrets_encryption` |
 | `initial_k3s_channel` | `k3s_channel` |
 | `install_k3s_version` | `k3s_version` |
+| `gateway_api_version` | `gateway_api_version` (same name; default is now derived from `cilium_version` unless pinned) |
 | `initial_rke2_channel` | `rke2_channel` |
 | `install_rke2_version` | `rke2_version` |
 | `automatically_upgrade_k3s` | `automatically_upgrade_kubernetes` |
@@ -178,6 +208,31 @@ Removed inputs:
   CCM path.
 - `autoscaler_labels` / `autoscaler_taints`: use
   `autoscaler_nodepools[*].labels` and `autoscaler_nodepools[*].taints`.
+
+  ```hcl
+  # v2
+  autoscaler_labels = ["role=worker"]
+  autoscaler_taints = ["dedicated=gpu:NoSchedule"]
+
+  # v3
+  autoscaler_nodepools = [
+    {
+      name        = "workers"
+      server_type = "cx32"
+      location    = "fsn1"
+      min_nodes   = 1
+      max_nodes   = 3
+      labels      = { role = "worker" }
+      taints = [
+        {
+          key    = "dedicated"
+          value  = "gpu"
+          effect = "NoSchedule"
+        }
+      ]
+    }
+  ]
+  ```
 
 Internal Terraform state addresses for the generated cluster token are preserved;
 only the public input/output names changed.

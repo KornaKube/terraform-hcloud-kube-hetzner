@@ -58,9 +58,16 @@ variable "ssh_private_key" {
 }
 
 variable "ssh_additional_public_keys" {
-  description = "Additional SSH public Keys. Use them to grant other team members root access to your cluster nodes"
+  description = "Additional SSH public Keys. Use them to grant other team members root access to your cluster nodes."
   type        = list(string)
   default     = []
+}
+
+variable "ssh_authorized_keys_exclusive" {
+  description = "Whether to manage /root/.ssh/authorized_keys exclusively. The default false merges module-managed keys into the existing file and preserves unknown out-of-band keys."
+  type        = bool
+  default     = false
+  nullable    = false
 }
 
 variable "ssh_keys" {

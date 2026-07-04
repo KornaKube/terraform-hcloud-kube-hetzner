@@ -59,6 +59,9 @@ module "kube-hetzner" {
   ssh_private_key = file("~/.ssh/id_ed25519")
   # You can add additional SSH public Keys to grant other team members root access to your cluster nodes.
   # ssh_additional_public_keys = []
+  # By default, kube-hetzner merges these keys into /root/.ssh/authorized_keys and preserves unknown out-of-band keys.
+  # Set this to true only if Terraform should replace authorized_keys with exactly the module-managed keys.
+  # ssh_authorized_keys_exclusive = true
 
   # You can also add additional SSH public Keys which are saved in the hetzner cloud by a label.
   # See https://docs.hetzner.cloud/#label-selector
@@ -553,7 +556,7 @@ module "kube-hetzner" {
   #   enable_sudo       = false   # optional, default to false. Set to true to add nat-router user to the sudo'ers. Note that ssh as root is disabled.
   #   enable_redundancy = true    # optional, default to false. Enable failover for the NAT router.
   #   standby_location  = "fsn1"  # optional, default to "". Must be set if enable_redundancy is true.
-  #   labels            = {}      # optionally add labels.
+  #   labels            = {}      # optionally add labels. Module-owned provisioner/engine/cluster/role labels are still enforced.
   #   extra_runcmd      = []      # optional, list of extra shell commands to run as root after NAT router cloud-init; changes rerun via Terraform SSH.
   # }
   # nat_router_hcloud_token = ""  # optional, default to "". Must be set if enable_redundancy is true. This token needs read/write to change the private alias ip in the nat_router subnetwork for failover
@@ -891,6 +894,11 @@ module "kube-hetzner" {
   # The default is false.
   # traefik_provider_kubernetes_gateway_enabled = true
 
+  # Optional: pin the standard Gateway API CRD bundle independently of cilium_version.
+  # The empty default derives the CRD version from cilium_version; set v1.5.1 to preserve
+  # the v2-era Gateway API pin for Traefik-only Gateway clusters.
+  # gateway_api_version = "v1.5.1"
+
   # Enable or disable default resource requests and limits for traefik. Values requested are 100m & 50Mi and limits 300m & 150Mi.
   # The default is true.
   # traefik_resource_limits = false
@@ -950,8 +958,9 @@ module "kube-hetzner" {
 
   # If you want to disable the automatic upgrade of k3s, you can set below to "false".
   # The default channel follows upstream stable. For production pinning, set k3s_version to an exact release tag.
-  # Minor channels such as v1.33 are not accepted as live installer channels unless an exact k3s_version is set,
-  # because Rancher's minor channel endpoints are not reliable enough to be used as deployment-time contracts.
+  # v1.33 remains accepted as an explicit v2 upgrade-preservation channel. Other minor channels are not accepted
+  # as live installer channels unless an exact k3s_version is set, because Rancher's minor channel endpoints are
+  # not reliable enough to be used as deployment-time contracts.
   # For production use, always use an HA setup with at least 3 control-plane nodes and 2 agents, and keep this on for maximum security.
 
   # The default is "true" (in HA setup i.e. at least 3 control plane nodes & 2 agents, just keep it enabled since it works flawlessly).
@@ -1030,7 +1039,8 @@ module "kube-hetzner" {
   # k3s_version = "v1.34.6+k3s1"
 
   # Allows you to specify stable, latest, or testing as live install/upgrade channels.
-  # For exact Kubernetes minor pinning, use k3s_version instead of a minor k3s_channel.
+  # v1.33 is accepted for explicit v2 upgrade preservation. For exact Kubernetes minor pinning,
+  # use k3s_version instead of a minor k3s_channel.
   # see https://rancher.com/docs/k3s/latest/en/upgrades/basic/ and https://update.k3s.io/v1-release/channels
   # ⚠️ If you are going to use Rancher addons for instance, it's always a good idea to fix the kube version to one minor version below the latest stable,
   #     e.g. an exact v1.33.x+k3s1 release instead of the current stable channel.
@@ -1300,9 +1310,9 @@ module "kube-hetzner" {
 
   # Enable Cilium's native Gateway API controller.
   # Requires cni_plugin = "cilium" and enable_kube_proxy = false. The module installs
-  # standard Gateway API CRDs matching the selected Cilium line and enables
-  # cert-manager Gateway API support when any Gateway provider is active. Choose
-  # this or Traefik's Gateway provider, not both.
+  # standard Gateway API CRDs matching the selected Cilium line unless gateway_api_version
+  # is pinned, and enables cert-manager Gateway API support when any Gateway provider is
+  # active. Choose this or Traefik's Gateway provider, not both.
   # cilium_gateway_api_enabled = true
 
   # Enables Hubble Observability to collect and visualize network traffic. Default: false

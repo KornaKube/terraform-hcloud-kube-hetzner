@@ -52,6 +52,10 @@ Complete this before applying a v3 plan:
 - Private-only, Robot/vSwitch, custom existing-network, external-overlay,
   autoscaler, Longhorn, RKE2, and multinetwork clusters have a rollback or
   blue/green path.
+- The k3s upgrade policy is explicit: v2 defaulted `k3s_channel` to `v1.33`,
+  while v3 defaults to `stable` and automatic Kubernetes upgrades still default
+  on. Pin `k3s_version`, set `k3s_channel = "v1.33"` intentionally, or accept
+  following `stable`.
 
 ## Support levels
 
@@ -270,6 +274,31 @@ Remove these inputs completely:
   away from the old raw-manifest CCM path.
 - `autoscaler_labels`: use `autoscaler_nodepools[*].labels`.
 - `autoscaler_taints`: use `autoscaler_nodepools[*].taints`.
+
+```hcl
+# v2
+autoscaler_labels = ["role=worker"]
+autoscaler_taints = ["dedicated=gpu:NoSchedule"]
+
+# v3
+autoscaler_nodepools = [
+  {
+    name        = "workers"
+    server_type = "cx32"
+    location    = "fsn1"
+    min_nodes   = 1
+    max_nodes   = 3
+    labels      = { role = "worker" }
+    taints = [
+      {
+        key    = "dedicated"
+        value  = "gpu"
+        effect = "NoSchedule"
+      }
+    ]
+  }
+]
+```
 
 ## Phase 5: update the version and initialize
 

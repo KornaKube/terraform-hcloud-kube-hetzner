@@ -22,6 +22,7 @@ This is the v3 major-release line. Before upgrading from any `v2.x` release:
 4. Networking behavior changed in v3: nodepool `network_id` is active and control-plane attachment behavior is explicit. Cilium public overlay remains an experimental preview gated by `enable_experimental_cilium_public_overlay` until live cross-network datapath validation passes. Prefer blue/green migration for custom/private/Robot/multinetwork topologies; do not apply plans that unexpectedly destroy or recreate network subnets.
 5. New clusters and normal in-place v2 upgrades use `network_subnet_mode = "per_nodepool"`, matching the released v2 subnet topology. Optional `network_subnet_mode = "shared"` is for new clusters or intentional topology changes only.
 6. Several public inputs were renamed or removed in v3 to clean up the module contract. See `MIGRATION.md` for the old-to-new variable map, especially the inverted positive booleans (`enable_hetzner_csi`, `enable_placement_groups`, `allow_inbound_icmp`, `enable_kube_proxy`, `enable_network_policy`, `enable_selinux`, nodepool `enable_public_ipv4`/`enable_public_ipv6`, autoscaler public-IP flags, and load-balancer enable flags).
+7. The v2 `k3s_channel` default was `v1.33`; v3 defaults to the upstream `stable` channel while automatic Kubernetes upgrades still default on. Before the first v3 apply, either pin `k3s_version`, set `k3s_channel = "v1.33"` to keep the v2 minor channel intentionally, or consciously accept following `stable`.
 
 #### Version Requirements
 
@@ -66,6 +67,8 @@ This is the v3 major-release line. Before upgrading from any `v2.x` release:
 
 ### 🐛 Bug Fixes
 
+- **SSH Authorized Keys Upgrade Safety** - Host SSH reconciliation now merges module-managed root authorized keys into the existing file by default, preserving out-of-band keys during v2-to-v3 upgrades. Set `ssh_authorized_keys_exclusive = true` to restore exact replacement semantics.
+- **NAT Router Failover Peer Scoping** - NAT routers now carry the standard cluster identity labels and redundant failover peer discovery filters by `role=nat_router,cluster=<cluster_name>`, preventing foreign NAT routers in the same Hetzner project from being selected.
 - **Agent Bootstrap Ordering** - Ordered agents after k3s/RKE2 kustomization bootstrap, moved post-install readiness waits after agent join, and kept observable agent start failures for default multi-node clusters (#2215, #2220, #2221).
 - **Control Plane LB Health Check** - Kept the control-plane load balancer health check on HTTP protocol with TLS enabled for the Kubernetes `/readyz` endpoint, avoiding invalid Hetzner `https` protocol validation failures (#2188, #2199, #2200, #2205).
 - **Autoscaler Large Configs and DRA RBAC** - Cluster Autoscaler now reads the generated Hetzner cluster config from a Secret-backed file, uses server-side apply for its manifest, and has read-only RBAC for Kubernetes Dynamic Resource Allocation resources (#2194, #2195, #2202).
@@ -112,7 +115,7 @@ This is the v3 major-release line. Before upgrading from any `v2.x` release:
 - **Control Plane Bootstrap Config Files** - First-node k3s/RKE2 bootstrap now installs authentication and audit policy config files before starting the API server when the matching API-server args are enabled.
 - **RKE2 First Bootstrap Parity** - RKE2 first bootstrap now respects `enable_selinux` and uses the effective kubeconfig/control-plane endpoints in its initial `tls-san` list, matching steady-state config.
 - **Attached Volume Mount Safety** - Attached control-plane and agent volumes now rerun mount configuration on size changes, resize XFS via mount path, and persist fstab entries by filesystem UUID instead of mutable device paths.
-- **K3s Channel Guardrail** - Default `k3s_channel` now uses the live `stable` channel, and plan-time validation rejects minor live channels unless an exact `k3s_version`/`rke2_version` is set, avoiding broken upstream minor-channel installer resolution.
+- **K3s Channel Guardrail** - Default `k3s_channel` now uses the live `stable` channel, and plan-time validation rejects minor live channels except the explicit `v1.33` v2-preservation path unless an exact `k3s_version`/`rke2_version` is set, avoiding broken upstream minor-channel installer resolution.
 - **API Port Consistency** - k3s first bootstrap now honors `kubernetes_api_port`, the control-plane LB health check/backend follows the configured listener port, IPv6 kubeconfig endpoints are bracketed correctly, and RKE2 now rejects unsupported non-6443 API port settings.
 - **RKE2 Apply Parity** - RKE2 kustomization triggers now include CCM values and system-upgrade drain/eviction/window settings, readiness waits evaluate dynamically, deployment/job waits match k3s, and RKE2 secret deployment uses the shared file-based secret path instead of shell argv literals.
 - **Node Route Robustness** - Host cloud-init now handles public-IPv6-only nodes by routing IPv4 through the private gateway while preserving public IPv6 routing, matching autoscaler behavior.
@@ -129,6 +132,7 @@ This is the v3 major-release line. Before upgrading from any `v2.x` release:
 - **Explicit Provider Constraints** - Pinned the previously implicit Kubernetes, Helm, Random, and CloudInit provider requirements and expanded CI validation across Terraform 1.10.5, 1.14.9, 1.15.0, and OpenTofu 1.11.6.
 - **iSCSI Daemon Defaults** - `iscsid` is now enabled on all nodes by default, and the `enable_iscsid` input was removed.
 - **Cilium Default Version** - Updated the default Cilium version to `1.19.3` so v3 defaults align with the current Gateway API-supported Cilium line.
+- **Gateway API CRD Version Override** - Restored the `gateway_api_version` input for users who need to pin the standard Gateway API CRD bundle independently of `cilium_version`, matching the v2 pinning capability. The default empty value keeps v3's Cilium-derived CRD version behavior.
 - **Primary IP Provider Cleanup** - Removed now-unused `assignee_type = "server"` attributes from hcloud Primary IP resources and raised the hcloud provider minimum to `1.62.0`.
 - **Cloudflare Zero Trust Support Boundary** - Documented Cloudflare Access/Tunnel as a user-managed external access pattern for kube API, SSH, Rancher, and ingress, while explicitly keeping Cloudflare Mesh/WARP out of the v3 node-transport support contract. Use Tailscale for supported secure node transport.
 - **Release Attribution Robustness** - Release workflow now maps commits to associated PR authors (including squash merges) when generating contributor credits, so original implementers are preserved.

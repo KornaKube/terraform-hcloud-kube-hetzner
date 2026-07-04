@@ -925,9 +925,9 @@ resource "terraform_data" "validation_contract" {
     precondition {
       condition = (
         var.k3s_version != "" ||
-        contains(["stable", "latest", "testing"], var.k3s_channel)
+        contains(["stable", "latest", "testing", "v1.33"], var.k3s_channel)
       )
-      error_message = "When k3s_version is empty, k3s_channel must be stable, latest, or testing. Use k3s_version for exact Kubernetes minor pinning because Rancher minor release channels are not reliable live installer targets."
+      error_message = "When k3s_version is empty, k3s_channel must be stable, latest, testing, or v1.33 for explicit v2 upgrade preservation. Use k3s_version for exact Kubernetes minor pinning because Rancher minor release channels are not reliable live installer targets."
     }
 
     # Moved from variable "rke2_channel" validation near variables.tf:2888.

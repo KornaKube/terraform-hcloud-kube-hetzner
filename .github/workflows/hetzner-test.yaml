@@ -20,10 +20,11 @@ env:
   SNAPSHOT_ID_X86: ${{ secrets.SNAPSHOT_ID_X86 }}
   LEAPMICRO_SNAPSHOT_ID_ARM: ${{ secrets.LEAPMICRO_SNAPSHOT_ID_ARM }}
   LEAPMICRO_SNAPSHOT_ID_X86: ${{ secrets.LEAPMICRO_SNAPSHOT_ID_X86 }}
+  EXPECTED_NODE_OS: leapmicro
   TF_VAR_microos_arm_snapshot_id: ${{ secrets.SNAPSHOT_ID_ARM }}
   TF_VAR_microos_x86_snapshot_id: ${{ secrets.SNAPSHOT_ID_X86 }}
-  TF_VAR_leapmicro_arm_snapshot_id: ${{ secrets.LEAPMICRO_SNAPSHOT_ID_ARM != '' && secrets.LEAPMICRO_SNAPSHOT_ID_ARM || secrets.SNAPSHOT_ID_ARM }}
-  TF_VAR_leapmicro_x86_snapshot_id: ${{ secrets.LEAPMICRO_SNAPSHOT_ID_X86 != '' && secrets.LEAPMICRO_SNAPSHOT_ID_X86 || secrets.SNAPSHOT_ID_X86 }}
+  TF_VAR_leapmicro_arm_snapshot_id: ${{ secrets.LEAPMICRO_SNAPSHOT_ID_ARM }}
+  TF_VAR_leapmicro_x86_snapshot_id: ${{ secrets.LEAPMICRO_SNAPSHOT_ID_X86 }}
 
 jobs:
   tests:
@@ -50,13 +51,9 @@ jobs:
       - name: Check prerequisites
         id: prerequisites
         run: |
-          ARM_SNAPSHOT="${LEAPMICRO_SNAPSHOT_ID_ARM:-$SNAPSHOT_ID_ARM}"
-          X86_SNAPSHOT="${LEAPMICRO_SNAPSHOT_ID_X86:-$SNAPSHOT_ID_X86}"
-
-          if [ -z "$ARM_SNAPSHOT" ] || [ -z "$X86_SNAPSHOT" ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Neither MicroOS nor LeapMicro snapshots are configured, skipping workflow."
-            exit 0
+          if [ -z "$LEAPMICRO_SNAPSHOT_ID_ARM" ] || [ -z "$LEAPMICRO_SNAPSHOT_ID_X86" ]; then
+            echo "::error::Leap Micro CI requires LEAPMICRO_SNAPSHOT_ID_ARM and LEAPMICRO_SNAPSHOT_ID_X86. Refusing to fall back to MicroOS snapshots because that would make coverage reporting dishonest."
+            exit 1
           fi
 
           echo "enabled=true" >> "$GITHUB_OUTPUT"
@@ -108,6 +105,25 @@ jobs:
           test -f "${TEST_DIR}/${KUBECONFIG_FILE}"
           kubectl --kubeconfig "${TEST_DIR}/${KUBECONFIG_FILE}" get nodes -o wide
           kubectl --kubeconfig "${TEST_DIR}/${KUBECONFIG_FILE}" get pods -A
+
+      - name: Assert node OS labels
+        if: steps.prerequisites.outputs.enabled == 'true'
+        timeout-minutes: 2
+        run: |
+          KUBECONFIG_FILE="${TEST_CLUSTER_NAME}_kubeconfig.yaml"
+          node_os_labels="$(
+            kubectl --kubeconfig "${TEST_DIR}/${KUBECONFIG_FILE}" get nodes -o json |
+              jq -r '.items[] | [.metadata.name, (.metadata.labels["kube-hetzner/os"] // "<missing>")] | @tsv'
+          )"
+
+          echo "$node_os_labels"
+
+          mismatches="$(printf '%s\n' "$node_os_labels" | awk -F '\t' -v expected="${EXPECTED_NODE_OS}" '$2 != expected {print}')"
+          if [ -n "$mismatches" ]; then
+            echo "::error::Expected every node to have kube-hetzner/os=${EXPECTED_NODE_OS}; mismatches:"
+            printf '%s\n' "$mismatches"
+            exit 1
+          fi
 
       - name: Destroy cluster
         if: steps.prerequisites.outputs.enabled == 'true' && always()

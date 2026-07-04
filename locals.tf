@@ -94,7 +94,8 @@ locals {
     local.multinetwork_transport_ipv4_enabled ? var.multinetwork_cilium_peer_ipv4_cidrs : [],
     local.multinetwork_transport_ipv6_enabled ? var.multinetwork_cilium_peer_ipv6_cidrs : []
   ))
-  gateway_api_crds_version            = try(provider::semvers::compare(trimprefix(var.cilium_version, "v"), "1.19.0"), 1) >= 0 ? "v1.4.1" : "v1.2.0"
+  gateway_api_crds_derived_version    = try(provider::semvers::compare(trimprefix(var.cilium_version, "v"), "1.19.0"), 1) >= 0 ? "v1.4.1" : "v1.2.0"
+  gateway_api_crds_version            = trimspace(var.gateway_api_version) != "" ? trimspace(var.gateway_api_version) : local.gateway_api_crds_derived_version
   gateway_api_crds_enabled            = var.cilium_gateway_api_enabled || var.traefik_provider_kubernetes_gateway_enabled
   gateway_api_standard_crd_names      = ["gatewayclasses", "gateways", "httproutes", "referencegrants", "grpcroutes"]
   gateway_api_standard_crds_manifest  = local.gateway_api_crds_enabled ? join("\n---\n", [for name in local.gateway_api_standard_crd_names : data.http.gateway_api_standard_crds[name].response_body]) : ""
@@ -125,12 +126,8 @@ locals {
   k3s_endpoint = local.node_transport_tailscale_enabled ? local.tailscale_k3s_join_endpoint : (local.multinetwork_overlay_enabled ? local.control_plane_public_endpoint : local.control_plane_private_endpoint)
 
   rke2_private_join_endpoint = "https://${local.control_plane_private_host}:9345"
-  rke2_public_join_endpoint = (
-    var.control_plane_endpoint != null
-    ? "https://${local.control_plane_public_host_formatted}:9345"
-    : "https://${local.control_plane_public_host_formatted}:9345"
-  )
-  rke2_join_endpoint = local.node_transport_tailscale_enabled ? local.tailscale_rke2_join_endpoint : (local.multinetwork_overlay_enabled ? local.rke2_public_join_endpoint : local.rke2_private_join_endpoint)
+  rke2_public_join_endpoint  = "https://${local.control_plane_public_host_formatted}:9345"
+  rke2_join_endpoint         = local.node_transport_tailscale_enabled ? local.tailscale_rke2_join_endpoint : (local.multinetwork_overlay_enabled ? local.rke2_public_join_endpoint : local.rke2_private_join_endpoint)
 
   ccm_version    = var.hetzner_ccm_version != null ? var.hetzner_ccm_version : jsondecode(data.http.hetzner_ccm_release[0].response_body).tag_name
   csi_version    = length(data.http.hetzner_csi_release) == 0 ? var.hetzner_csi_version : jsondecode(data.http.hetzner_csi_release[0].response_body).tag_name
@@ -1540,48 +1537,151 @@ delete_legacy_ccm_resource clusterrolebinding system:hcloud-cloud-controller-man
 delete_legacy_ccm_resource clusterrolebinding system:hcloud-cloud-controller-manager:restricted
 EOT
 
+  post_install_readiness_deployments = concat(
+    [
+      {
+        namespace = "kube-system"
+        name      = "hcloud-cloud-controller-manager"
+      }
+    ],
+    var.enable_hetzner_csi ? [
+      {
+        namespace = "kube-system"
+        name      = "hcloud-csi-controller"
+      }
+    ] : [],
+    var.cni_plugin == "cilium" ? [
+      {
+        namespace = "kube-system"
+        name      = "cilium-operator"
+      }
+    ] : [],
+    var.cni_plugin == "cilium" && var.cilium_egress_gateway_enabled && var.cilium_egress_gateway_ha_enabled ? [
+      {
+        namespace = "kube-system"
+        name      = "cilium-egress-ha"
+      }
+    ] : [],
+    local.is_managed_ingress_controller ? [
+      {
+        namespace = local.ingress_controller_namespace
+        name      = local.ingress_controller_service_names[var.ingress_controller]
+      }
+    ] : [],
+    var.enable_cert_manager || var.enable_rancher ? [
+      {
+        namespace = "cert-manager"
+        name      = "cert-manager"
+      },
+      {
+        namespace = "cert-manager"
+        name      = "cert-manager-cainjector"
+      },
+      {
+        namespace = "cert-manager"
+        name      = "cert-manager-webhook"
+      }
+    ] : [],
+    var.enable_longhorn ? [
+      {
+        namespace = var.longhorn_namespace
+        name      = "longhorn-admission-webhook"
+      },
+      {
+        namespace = var.longhorn_namespace
+        name      = "longhorn-conversion-webhook"
+      },
+      {
+        namespace = var.longhorn_namespace
+        name      = "longhorn-driver-deployer"
+      },
+      {
+        namespace = var.longhorn_namespace
+        name      = "longhorn-recovery-backend"
+      },
+      {
+        namespace = var.longhorn_namespace
+        name      = "longhorn-ui"
+      }
+    ] : [],
+    var.enable_system_upgrade_controller ? [
+      {
+        namespace = "system-upgrade"
+        name      = "system-upgrade-controller"
+      }
+    ] : []
+  )
+
+  post_install_readiness_helm_chart_names = concat(
+    ["hcloud-cloud-controller-manager"],
+    var.enable_hetzner_csi ? ["hcloud-csi"] : [],
+    local.is_managed_ingress_controller ? [var.ingress_controller] : [],
+    var.cni_plugin == "cilium" ? ["cilium"] : [],
+    var.enable_longhorn ? ["longhorn"] : [],
+    var.enable_csi_driver_smb ? ["csi-driver-smb"] : [],
+    var.enable_cert_manager || var.enable_rancher ? ["cert-manager"] : [],
+    var.enable_rancher ? ["rancher"] : []
+  )
+
+  post_install_readiness_wait_deployment_commands = join("\n", [
+    for target in local.post_install_readiness_deployments :
+    "wait_deployment ${jsonencode(target.namespace)} ${jsonencode(target.name)} 600"
+  ])
+
+  post_install_readiness_wait_helm_job_commands_900 = join("\n", [
+    for chart_name in local.post_install_readiness_helm_chart_names :
+    "wait_helm_install_job \"kube-system\" ${jsonencode(chart_name)} 900"
+  ])
+
+  post_install_readiness_wait_helm_job_commands_300 = join("\n", [
+    for chart_name in local.post_install_readiness_helm_chart_names :
+    "wait_helm_install_job \"kube-system\" ${jsonencode(chart_name)} 300"
+  ])
+
   post_install_readiness_wait_script = <<-EOT
 KUBECTL="__KUBECTL__"
 
-wait_namespace_deployments() {
+wait_deployment() {
   ns="$1"
-  timeout_seconds="$2"
+  name="$2"
+  timeout_seconds="$3"
 
-  $KUBECTL get ns "$ns" >/dev/null 2>&1 || return 0
+  $KUBECTL get ns "$ns" >/dev/null
 
-  deployments="$($KUBECTL -n "$ns" get deployment -o name 2>/dev/null || true)"
-  if [ -z "$deployments" ]; then
-    return 0
-  fi
+  deadline="$(($(date +%s) + timeout_seconds))"
+  until $KUBECTL -n "$ns" get "deployment/$name" >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "Timed out waiting for deployment/$name to be created in namespace $ns"
+      return 1
+    fi
+    sleep 5
+  done
 
-  printf '%s\n' "$deployments" | xargs $KUBECTL -n "$ns" wait --for=condition=Available --timeout="$${timeout_seconds}s"
+  echo "Waiting for deployment/$name in namespace $ns"
+  $KUBECTL -n "$ns" wait --for=condition=Available --timeout="$${timeout_seconds}s" "deployment/$name"
 }
 
-wait_namespace_jobs() {
+wait_helm_install_job() {
   ns="$1"
-  timeout_seconds="$2"
+  chart_name="$2"
+  timeout_seconds="$3"
 
   $KUBECTL get ns "$ns" >/dev/null 2>&1 || return 0
 
-  jobs="$($KUBECTL -n "$ns" get job -o name 2>/dev/null || true)"
+  jobs="$($KUBECTL -n "$ns" get job -o name 2>/dev/null | grep -E "^job.batch/helm-install-$chart_name($|-)" || true)"
   if [ -z "$jobs" ]; then
     return 0
   fi
 
+  echo "Waiting for Helm install job(s) for $chart_name in namespace $ns"
   printf '%s\n' "$jobs" | xargs $KUBECTL -n "$ns" wait --for=condition=Complete --timeout="$${timeout_seconds}s"
 }
 
-for ns in kube-system ${var.enable_cert_manager ? "cert-manager" : ""} ${var.enable_longhorn ? var.longhorn_namespace : ""}; do
-  [ -n "$ns" ] && wait_namespace_jobs "$ns" 900
-done
+${local.post_install_readiness_wait_helm_job_commands_900}
 
-for ns in kube-system ${var.enable_cert_manager ? "cert-manager" : ""} ${var.enable_longhorn ? var.longhorn_namespace : ""} ${local.ingress_controller_namespace} ${var.enable_system_upgrade_controller ? "system-upgrade" : ""}; do
-  [ -n "$ns" ] && wait_namespace_deployments "$ns" 600
-done
+${local.post_install_readiness_wait_deployment_commands}
 
-for ns in kube-system ${var.enable_cert_manager ? "cert-manager" : ""} ${var.enable_longhorn ? var.longhorn_namespace : ""}; do
-  [ -n "$ns" ] && wait_namespace_jobs "$ns" 300
-done
+${local.post_install_readiness_wait_helm_job_commands_300}
 EOT
 
   hetzner_ccm_networking_enabled       = local.cluster_has_ipv4 && !local.cross_network_transport_enabled
@@ -1804,6 +1904,10 @@ EOT
 
   labels_agent_node = {
     role = "agent_node"
+  }
+
+  labels_nat_router = {
+    role = "nat_router"
   }
 
   cni_install_resources = {

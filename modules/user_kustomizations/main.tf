@@ -9,6 +9,8 @@ module "user_kustomization_set" {
   ssh_connection = var.ssh_connection
 
   source_folder       = var.kustomizations_map[each.key].source_folder
+  allow_empty         = var.kustomizations_map[each.key].allow_empty
+  entry_key           = each.key
   destination_folder  = "${local.base_destination_folder}/${each.key}"
   template_parameters = var.kustomizations_map[each.key].kustomize_parameters
 

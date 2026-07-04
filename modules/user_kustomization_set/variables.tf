@@ -19,6 +19,18 @@ variable "source_folder" {
   default = ""
 }
 
+variable "allow_empty" {
+  type        = bool
+  default     = false
+  description = "Allow this kustomization set to have no source folder or no rendered kustomization file."
+}
+
+variable "entry_key" {
+  type        = string
+  default     = ""
+  description = "Optional parent user_kustomizations key used in validation errors."
+}
+
 variable "destination_folder" {
   type    = string
   default = "/var/user_kustomize"

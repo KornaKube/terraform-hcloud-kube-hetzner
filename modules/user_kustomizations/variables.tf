@@ -21,6 +21,7 @@ variable "kustomizations_map" {
     pre_commands         = optional(string, "")
     post_commands        = optional(string, "")
     apply_options        = optional(list(string), [])
+    allow_empty          = optional(bool, false)
   }))
   default     = {}
   description = "Map of kustomization entries, where key is the order number."

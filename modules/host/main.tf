@@ -179,9 +179,10 @@ resource "hcloud_server_network" "extra_networks" {
 
 resource "terraform_data" "ssh_authorized_keys" {
   triggers_replace = {
-    server_id           = hcloud_server.server.id
-    ssh_public_key      = sha1(var.ssh_public_key)
-    ssh_additional_keys = sha1(join("\n", var.ssh_additional_public_keys))
+    server_id                     = hcloud_server.server.id
+    ssh_public_key                = sha1(var.ssh_public_key)
+    ssh_additional_keys           = sha1(join("\n", var.ssh_additional_public_keys))
+    ssh_authorized_keys_exclusive = tostring(var.ssh_authorized_keys_exclusive)
   }
 
   connection {
@@ -210,10 +211,28 @@ resource "terraform_data" "ssh_authorized_keys" {
 
   provisioner "remote-exec" {
     inline = [
-      "install -d -m 0700 /root/.ssh",
-      "install -m 0600 /tmp/authorized_keys /root/.ssh/authorized_keys",
-      "chown root:root /root/.ssh /root/.ssh/authorized_keys",
-      "rm -f /tmp/authorized_keys",
+      <<-EOT
+      set -eu
+
+      install -d -m 0700 /root/.ssh
+
+      if [ "${var.ssh_authorized_keys_exclusive}" = "true" ]; then
+        install -m 0600 /tmp/authorized_keys /root/.ssh/authorized_keys
+      else
+        merged="$(mktemp)"
+        if [ -f /root/.ssh/authorized_keys ]; then
+          awk 'NF > 0 && !seen[$0]++ { print }' /root/.ssh/authorized_keys /tmp/authorized_keys > "$merged"
+        else
+          awk 'NF > 0 && !seen[$0]++ { print }' /tmp/authorized_keys > "$merged"
+        fi
+        install -m 0600 "$merged" /root/.ssh/authorized_keys
+        rm -f "$merged"
+      fi
+
+      chown root:root /root/.ssh /root/.ssh/authorized_keys
+      rm -f /tmp/authorized_keys
+      EOT
+      ,
     ]
   }
 

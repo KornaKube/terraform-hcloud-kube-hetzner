@@ -2,6 +2,17 @@
 # Purpose of this module is to copy a single user kustomization "set" to control plane.
 # The set contains the yaml-files for Kustomization and the postinstall.sh script.
 
+resource "terraform_data" "validate_source_folder" {
+  input = local.source_folder_validation_error
+
+  lifecycle {
+    precondition {
+      condition     = local.source_folder_validation_error == ""
+      error_message = local.source_folder_validation_error
+    }
+  }
+}
+
 resource "terraform_data" "install_scripts" {
 
   triggers_replace = merge({
@@ -48,6 +59,8 @@ resource "terraform_data" "install_scripts" {
     content     = templatefile("${path.module}/templates/apply-options.sh.tpl", { options = nonsensitive(var.apply_options) })
     destination = local.apply_options_file
   }
+
+  depends_on = [terraform_data.validate_source_folder]
 }
 
 resource "terraform_data" "user_kustomization_template_files" {
@@ -79,7 +92,7 @@ resource "terraform_data" "user_kustomization_template_files" {
   }
 
   provisioner "file" {
-    content     = templatefile("${var.source_folder}/${each.key}", var.template_parameters)
+    content     = templatefile("${local.source_folder}/${each.key}", var.template_parameters)
     destination = replace("${var.destination_folder}/${each.key}", ".tpl", "")
   }
 

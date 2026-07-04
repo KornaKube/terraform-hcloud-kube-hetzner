@@ -110,7 +110,7 @@ Only apply after reviewing all planned resource actions.
 | Area | Support level | Notes |
 | --- | --- | --- |
 | k3s on Leap Micro | Stable default | Recommended path for new clusters. |
-| RKE2 on Leap Micro | Supported | Heavier distribution, covered by v3 validation and CI presets. |
+| RKE2 on Leap Micro | Supported | Heavier distribution; basic RKE2 preset covered by CI, advanced RKE2 combinations validated manually per release. |
 | MicroOS | Legacy/upgrade support | Existing clusters remain supported; new nodepools default to Leap Micro. |
 | OpenTofu | Supported | Validate with `tofu init`, `tofu validate`, and `tofu plan` before applying. |
 | Cilium dual-stack | Supported | Preferred advanced CNI path. |

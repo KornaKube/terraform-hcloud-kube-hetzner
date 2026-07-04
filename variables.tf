@@ -171,6 +171,13 @@ variable "ssh_additional_public_keys" {
   }
 }
 
+variable "ssh_authorized_keys_exclusive" {
+  description = "Whether to manage /root/.ssh/authorized_keys exclusively on cluster nodes. The default false merges ssh_public_key and ssh_additional_public_keys into the existing file, preserving unknown out-of-band keys. Set true to replace the file with only module-managed keys."
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
 variable "authentication_config" {
   description = "Strucutred authentication configuration. This can be used to define external authentication providers."
   type        = string
@@ -1945,6 +1952,18 @@ variable "traefik_provider_kubernetes_gateway_enabled" {
 
 }
 
+variable "gateway_api_version" {
+  type        = string
+  default     = ""
+  description = "Standard Gateway API CRD release tag to fetch from kubernetes-sigs/gateway-api when Cilium Gateway API or Traefik's Kubernetes Gateway provider is enabled. Default empty string keeps the v3 behavior of deriving the CRD bundle from cilium_version; set this to a release tag such as v1.5.1 to pin the Gateway API CRDs independently."
+
+  validation {
+    condition     = trimspace(var.gateway_api_version) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$", trimspace(var.gateway_api_version)))
+    error_message = "gateway_api_version must be empty or a Gateway API release tag such as v1.5.1."
+  }
+
+}
+
 variable "traefik_resource_limits" {
   type        = bool
   default     = true
@@ -2124,7 +2143,7 @@ variable "enable_metrics_server" {
 variable "k3s_channel" {
   type        = string
   default     = "stable" # Please update kube.tf.example too when changing this variable
-  description = "Allows you to specify an initial k3s channel. Use stable, latest, or testing for live channel installs; use k3s_version for exact Kubernetes minor pinning. See https://update.k3s.io/v1-release/channels for available channels."
+  description = "Allows you to specify an initial k3s channel. Use stable, latest, or testing for live channel installs; v1.33 is accepted for explicit v2 upgrade preservation; use k3s_version for exact Kubernetes minor pinning. See https://update.k3s.io/v1-release/channels for available channels."
 
   validation {
     condition     = contains(["stable", "latest", "testing", "v1.16", "v1.17", "v1.18", "v1.19", "v1.20", "v1.21", "v1.22", "v1.23", "v1.24", "v1.25", "v1.26", "v1.27", "v1.28", "v1.29", "v1.30", "v1.31", "v1.32", "v1.33", "v1.34", "v1.35"], var.k3s_channel)
@@ -2160,7 +2179,7 @@ variable "rke2_version" {
 variable "system_upgrade_enable_eviction" {
   type        = bool
   default     = true
-  description = "Whether to directly delete pods during system upgrade (k3s) or evict them. Defaults to true. Disable this on small clusters to avoid system upgrades hanging since pods resisting eviction keep node unschedulable forever. NOTE: turning this off, introduces potential downtime of services of the upgraded nodes."
+  description = "Whether to directly delete pods during Kubernetes system upgrades or evict them. Defaults to true. Disable this on small clusters to avoid system upgrades hanging since pods resisting eviction keep nodes unschedulable forever. NOTE: turning this off introduces potential downtime for services on upgraded nodes."
 }
 
 variable "system_upgrade_use_drain" {
@@ -2197,7 +2216,7 @@ variable "system_upgrade_schedule_window" {
     timeZone  = optional(string, "UTC")
   })
   default     = null
-  description = "Schedule window for k3s automated upgrades (system-upgrade-controller v0.15.0+). When set, upgrade jobs will only be created within the specified time window. 'days' accepts lowercase day names (e.g. [\"monday\",\"tuesday\"]). 'startTime'/'endTime' use HH:MM format. 'timeZone' defaults to UTC. See https://docs.k3s.io/upgrades/automated#scheduling-upgrades"
+  description = "Schedule window for automated Kubernetes upgrades managed by system-upgrade-controller v0.15.0+. When set, upgrade jobs will only be created within the specified time window. 'days' accepts lowercase day names (e.g. [\"monday\",\"tuesday\"]). 'startTime'/'endTime' use HH:MM format. 'timeZone' defaults to UTC."
 
   validation {
     condition = var.system_upgrade_schedule_window == null ? true : (
@@ -2802,6 +2821,7 @@ variable "user_kustomizations" {
     pre_commands         = optional(string, "")
     post_commands        = optional(string, "")
     apply_options        = optional(list(string), [])
+    allow_empty          = optional(bool, false)
   }))
   default = {
     "1" = {
@@ -2810,9 +2830,10 @@ variable "user_kustomizations" {
       pre_commands         = ""
       post_commands        = ""
       apply_options        = []
+      allow_empty          = true
     }
   }
-  description = "Map of Kustomization-set entries, where key is the order number."
+  description = "Map of Kustomization-set entries, where key is the order number. Each non-empty set must point source_folder at templates including a rendered kustomization file; set allow_empty = true only for intentional no-op sets."
 
   validation {
     condition = alltrue([
@@ -2872,17 +2893,17 @@ variable "flannel_backend" {
 variable "control_planes_custom_config" {
   type        = any
   default     = {}
-  description = "Additional configuration for control planes that will be added to k3s's config.yaml. E.g to allow etcd monitoring."
+  description = "Additional configuration for control planes that will be added to the selected Kubernetes distribution's config.yaml. E.g. to allow etcd monitoring."
 }
 
 variable "agent_nodes_custom_config" {
   type        = any
   default     = {}
-  description = "Additional configuration for agent nodes and autoscaler nodes that will be added to k3s's config.yaml. E.g to allow kube-proxy monitoring."
+  description = "Additional configuration for agent nodes and autoscaler nodes that will be added to the selected Kubernetes distribution's config.yaml. E.g. to allow kube-proxy monitoring."
 }
 
 variable "registries_config" {
-  description = "K3S registries.yml contents. It used to access private docker registries."
+  description = "Kubernetes distribution registries.yaml contents, used to configure private registries and registry mirrors."
   default     = " "
   type        = string
 
@@ -2946,7 +2967,7 @@ variable "embedded_registry_mirror" {
 }
 
 variable "kubelet_config" {
-  description = "K3S kubelet-config.yaml contents. Used to configure the kubelet."
+  description = "Kubernetes distribution kubelet-config.yaml contents. Used to configure the kubelet."
   default     = ""
   type        = string
 
@@ -2957,7 +2978,7 @@ variable "kubelet_config" {
 }
 
 variable "audit_policy_config" {
-  description = "K3S audit-policy.yaml contents. Used to configure Kubernetes audit logging."
+  description = "Kubernetes distribution audit-policy.yaml contents. Used to configure Kubernetes audit logging."
   default     = ""
   type        = string
 
@@ -3131,7 +3152,7 @@ variable "keep_disk_control_plane_nodes" {
 variable "system_upgrade_controller_version" {
   type        = string
   default     = "v0.18.0"
-  description = "Version of the System Upgrade Controller for automated upgrades of k3s. v0.15.0+ supports the 'window' parameter for scheduling upgrades. See https://github.com/rancher/system-upgrade-controller/releases for available versions."
+  description = "Version of the System Upgrade Controller for automated Kubernetes upgrades. v0.15.0+ supports the 'window' parameter for scheduling upgrades. See https://github.com/rancher/system-upgrade-controller/releases for available versions."
 }
 
 variable "hetzner_ccm_values" {
