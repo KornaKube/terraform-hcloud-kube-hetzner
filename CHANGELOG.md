@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Upgrade Notes
+
+- This is a pure bug-fix patch: existing clusters should see a **no-op `terraform plan`** after upgrading (verified against v2.20.0 — no resource changes, no recreation). The agent-startup and kustomization fixes take effect on fresh applies and node replacements; the SELinux fix applies to newly provisioned/replaced nodes only.
+
 ### 🐛 Bug Fixes
 
 - **Traefik Gateway API CRDs** - Install the Kubernetes Gateway API standard CRDs before Traefik when `traefik_provider_kubernetes_gateway_enabled` is enabled, preventing Helm install failures for `GatewayClass` and `Gateway` resources (#2211).
