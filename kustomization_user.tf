@@ -71,7 +71,7 @@ resource "terraform_data" "kustomization_user_deploy" {
     inline = [
       "rm -f /var/user_kustomize/**/*.yaml.tpl",
       "echo 'Applying user kustomization...'",
-      "kubectl apply -k /var/user_kustomize/ --wait=true",
+      "kubectl apply -k /var/user_kustomize/ ${join(" ", var.kustomize_apply_options)}",
     ]
   }
 
