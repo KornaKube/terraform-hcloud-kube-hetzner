@@ -111,16 +111,29 @@ jobs:
         timeout-minutes: 2
         run: |
           KUBECONFIG_FILE="${TEST_CLUSTER_NAME}_kubeconfig.yaml"
-          node_os_labels="$(
+          case "${EXPECTED_NODE_OS}" in
+            leapmicro)
+              expected_os_image_substring="Leap Micro"
+              ;;
+            microos)
+              expected_os_image_substring="MicroOS"
+              ;;
+            *)
+              echo "::error::Unsupported EXPECTED_NODE_OS=${EXPECTED_NODE_OS}; expected leapmicro or microos"
+              exit 1
+              ;;
+          esac
+
+          node_os_images="$(
             kubectl --kubeconfig "${TEST_DIR}/${KUBECONFIG_FILE}" get nodes -o json |
-              jq -r '.items[] | [.metadata.name, (.metadata.labels["kube-hetzner/os"] // "<missing>")] | @tsv'
+              jq -r '.items[] | [.metadata.name, (.status.nodeInfo.osImage // "<missing>")] | @tsv'
           )"
 
-          echo "$node_os_labels"
+          echo "$node_os_images"
 
-          mismatches="$(printf '%s\n' "$node_os_labels" | awk -F '\t' -v expected="${EXPECTED_NODE_OS}" '$2 != expected {print}')"
+          mismatches="$(printf '%s\n' "$node_os_images" | awk -F '\t' -v expected="${expected_os_image_substring}" 'index($2, expected) == 0 {print}')"
           if [ -n "$mismatches" ]; then
-            echo "::error::Expected every node to have kube-hetzner/os=${EXPECTED_NODE_OS}; mismatches:"
+            echo "::error::Expected every node osImage to contain ${expected_os_image_substring}; mismatches:"
             printf '%s\n' "$mismatches"
             exit 1
           fi

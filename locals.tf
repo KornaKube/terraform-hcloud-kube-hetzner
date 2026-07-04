@@ -890,9 +890,13 @@ EOT
     )
   }
 
+  # Compare these defaults with jsonencode at substitution sites: optional(list(string))
+  # materializes as list(string), while these literals are tuples, and Terraform == is
+  # type-strict across list/tuple even when the values are byte-identical.
   control_plane_schema_default_kubelet_args = ["kube-reserved=cpu=250m,memory=1500Mi,ephemeral-storage=1Gi", "system-reserved=cpu=250m,memory=300Mi"]
   agent_schema_default_kubelet_args         = ["kube-reserved=cpu=50m,memory=300Mi,ephemeral-storage=1Gi", "system-reserved=cpu=250m,memory=300Mi"]
   system_reserved_default_kubelet_arg       = "system-reserved=cpu=250m,memory=300Mi"
+  control_plane_safe_fallback_kubelet_args  = ["kube-reserved=cpu=250m,memory=512Mi,ephemeral-storage=1Gi", local.system_reserved_default_kubelet_arg]
 
   hcloud_server_type_memory_gb_by_name = {
     for server_type in data.hcloud_server_types.all.server_types :
@@ -929,7 +933,7 @@ EOT
         labels : concat(local.default_control_plane_labels, nodepool_obj.swap_size != "" || nodepool_obj.zram_size != "" ? local.swap_node_label : [], nodepool_obj.labels),
         hcloud_labels : nodepool_obj.hcloud_labels,
         taints : compact(concat(local.default_control_plane_taints, nodepool_obj.taints)),
-        kubelet_args : nodepool_obj.kubelet_args == local.control_plane_schema_default_kubelet_args ? try(local.control_plane_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.control_plane_schema_default_kubelet_args) : nodepool_obj.kubelet_args,
+        kubelet_args : jsonencode(nodepool_obj.kubelet_args) == jsonencode(local.control_plane_schema_default_kubelet_args) ? try(local.control_plane_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.control_plane_safe_fallback_kubelet_args) : nodepool_obj.kubelet_args,
         backups : nodepool_obj.backups,
         floating_ip : nodepool_obj.floating_ip,
         floating_ip_id : nodepool_obj.floating_ip_id,
@@ -970,7 +974,7 @@ EOT
           labels : concat(local.default_control_plane_labels, nodepool_obj.swap_size != "" || nodepool_obj.zram_size != "" ? local.swap_node_label : [], nodepool_obj.labels),
           hcloud_labels : nodepool_obj.hcloud_labels,
           taints : compact(concat(local.default_control_plane_taints, nodepool_obj.taints)),
-          kubelet_args : nodepool_obj.kubelet_args == local.control_plane_schema_default_kubelet_args ? try(local.control_plane_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.control_plane_schema_default_kubelet_args) : nodepool_obj.kubelet_args,
+          kubelet_args : jsonencode(nodepool_obj.kubelet_args) == jsonencode(local.control_plane_schema_default_kubelet_args) ? try(local.control_plane_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.control_plane_safe_fallback_kubelet_args) : nodepool_obj.kubelet_args,
           backups : nodepool_obj.backups,
           swap_size : nodepool_obj.swap_size,
           zram_size : nodepool_obj.zram_size,
@@ -1001,7 +1005,7 @@ EOT
           extra_write_files : concat(nodepool_obj.extra_write_files, coalesce(node_obj.extra_write_files, [])),
           extra_runcmd : concat(nodepool_obj.extra_runcmd, coalesce(node_obj.extra_runcmd, [])),
           attached_volumes : concat(nodepool_obj.attached_volumes, coalesce(node_obj.attached_volumes, [])),
-          kubelet_args : node_obj.kubelet_args == local.control_plane_schema_default_kubelet_args ? try(local.control_plane_size_aware_kubelet_args_by_server_type[coalesce(node_obj.server_type, nodepool_obj.server_type)], local.control_plane_schema_default_kubelet_args) : node_obj.kubelet_args,
+          kubelet_args : jsonencode(node_obj.kubelet_args) == jsonencode(local.control_plane_schema_default_kubelet_args) ? try(local.control_plane_size_aware_kubelet_args_by_server_type[coalesce(node_obj.server_type, nodepool_obj.server_type)], local.control_plane_safe_fallback_kubelet_args) : node_obj.kubelet_args,
         }
       )
     }
@@ -1034,7 +1038,7 @@ EOT
         labels : concat(local.default_agent_labels, nodepool_obj.swap_size != "" || nodepool_obj.zram_size != "" ? local.swap_node_label : [], nodepool_obj.labels),
         hcloud_labels : nodepool_obj.hcloud_labels,
         taints : compact(concat(local.default_agent_taints, nodepool_obj.taints)),
-        kubelet_args : nodepool_obj.kubelet_args == local.agent_schema_default_kubelet_args ? try(local.agent_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.agent_schema_default_kubelet_args) : nodepool_obj.kubelet_args,
+        kubelet_args : jsonencode(nodepool_obj.kubelet_args) == jsonencode(local.agent_schema_default_kubelet_args) ? try(local.agent_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.agent_schema_default_kubelet_args) : nodepool_obj.kubelet_args,
         backups : lookup(nodepool_obj, "backups", false),
         append_random_suffix : nodepool_obj.append_random_suffix,
         swap_size : nodepool_obj.swap_size,
@@ -1078,7 +1082,7 @@ EOT
           labels : concat(local.default_agent_labels, nodepool_obj.swap_size != "" || nodepool_obj.zram_size != "" ? local.swap_node_label : [], nodepool_obj.labels),
           hcloud_labels : nodepool_obj.hcloud_labels,
           taints : compact(concat(local.default_agent_taints, nodepool_obj.taints)),
-          kubelet_args : nodepool_obj.kubelet_args == local.agent_schema_default_kubelet_args ? try(local.agent_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.agent_schema_default_kubelet_args) : nodepool_obj.kubelet_args,
+          kubelet_args : jsonencode(nodepool_obj.kubelet_args) == jsonencode(local.agent_schema_default_kubelet_args) ? try(local.agent_size_aware_kubelet_args_by_server_type[nodepool_obj.server_type], local.agent_schema_default_kubelet_args) : nodepool_obj.kubelet_args,
           backups : lookup(nodepool_obj, "backups", false),
           append_random_suffix : nodepool_obj.append_random_suffix,
           swap_size : nodepool_obj.swap_size,
@@ -1113,7 +1117,7 @@ EOT
           extra_write_files : concat(nodepool_obj.extra_write_files, coalesce(node_obj.extra_write_files, [])),
           extra_runcmd : concat(nodepool_obj.extra_runcmd, coalesce(node_obj.extra_runcmd, [])),
           attached_volumes : concat(nodepool_obj.attached_volumes, coalesce(node_obj.attached_volumes, [])),
-          kubelet_args : node_obj.kubelet_args == local.agent_schema_default_kubelet_args ? try(local.agent_size_aware_kubelet_args_by_server_type[coalesce(node_obj.server_type, nodepool_obj.server_type)], local.agent_schema_default_kubelet_args) : node_obj.kubelet_args,
+          kubelet_args : jsonencode(node_obj.kubelet_args) == jsonencode(local.agent_schema_default_kubelet_args) ? try(local.agent_size_aware_kubelet_args_by_server_type[coalesce(node_obj.server_type, nodepool_obj.server_type)], local.agent_schema_default_kubelet_args) : node_obj.kubelet_args,
         },
         (
           node_obj.append_index_to_node_name ? { node_name_suffix : "-${floor(tonumber(node_key))}" } : {}
@@ -1135,7 +1139,7 @@ EOT
 
   autoscaler_nodepool_kubelet_args = [
     for nodepool in var.autoscaler_nodepools :
-    nodepool.kubelet_args == local.agent_schema_default_kubelet_args ? try(local.agent_size_aware_kubelet_args_by_server_type[nodepool.server_type], local.agent_schema_default_kubelet_args) : nodepool.kubelet_args
+    jsonencode(nodepool.kubelet_args) == jsonencode(local.agent_schema_default_kubelet_args) ? try(local.agent_size_aware_kubelet_args_by_server_type[nodepool.server_type], local.agent_schema_default_kubelet_args) : nodepool.kubelet_args
   ]
 
   autoscaler_effective_kubelet_args = [
