@@ -1124,6 +1124,13 @@ resource "terraform_data" "validation_contract" {
 # HelmChart valuesContent that crash-loops the helm-install job at runtime
 # (seen live with cilium routingMode indentation). Failing at plan time is
 # strictly better.
+locals {
+  validation_hetzner_lb_adoption_annotation_keys = [
+    "load-balancer.hetzner.cloud/name",
+    "load-balancer.hetzner.cloud/id",
+  ]
+}
+
 resource "terraform_data" "helm_values_yaml_contract" {
   input = true
 
@@ -1144,6 +1151,42 @@ resource "terraform_data" "helm_values_yaml_contract" {
         } : trimspace(doc) == "" || can(yamldecode(doc))
       ])
       error_message = "One of the rendered Helm values documents (cilium, longhorn, csi_driver_smb, hetzner_csi, nginx, hetzner_ccm, haproxy, traefik, rancher, cert_manager) is not valid YAML. Inspect the corresponding *_values local / *_merge_values input."
+    }
+
+    precondition {
+      condition = (
+        local.using_klipper_lb ||
+        var.ingress_controller != "nginx" ||
+        anytrue([
+          for annotation_key in local.validation_hetzner_lb_adoption_annotation_keys :
+          try(trimspace(tostring(yamldecode(local.nginx_values).controller.service.annotations[annotation_key])) != "", false)
+        ])
+      )
+      error_message = "ingress_controller=\"nginx\" with Hetzner Load Balancer mode requires local.nginx_values to include a non-empty load-balancer.hetzner.cloud/name or load-balancer.hetzner.cloud/id annotation under controller.service.annotations. Preserve that chart path when using nginx_values/nginx_merge_values so Hetzner CCM can adopt the Terraform-managed Load Balancer."
+    }
+
+    precondition {
+      condition = (
+        local.using_klipper_lb ||
+        var.ingress_controller != "traefik" ||
+        anytrue([
+          for annotation_key in local.validation_hetzner_lb_adoption_annotation_keys :
+          try(trimspace(tostring(yamldecode(local.traefik_values).service.annotations[annotation_key])) != "", false)
+        ])
+      )
+      error_message = "ingress_controller=\"traefik\" with Hetzner Load Balancer mode requires local.traefik_values to include a non-empty load-balancer.hetzner.cloud/name or load-balancer.hetzner.cloud/id annotation under service.annotations. Preserve that chart path when using traefik_values/traefik_merge_values so Hetzner CCM can adopt the Terraform-managed Load Balancer."
+    }
+
+    precondition {
+      condition = (
+        local.using_klipper_lb ||
+        var.ingress_controller != "haproxy" ||
+        anytrue([
+          for annotation_key in local.validation_hetzner_lb_adoption_annotation_keys :
+          try(trimspace(tostring(yamldecode(local.haproxy_values).controller.service.annotations[annotation_key])) != "", false)
+        ])
+      )
+      error_message = "ingress_controller=\"haproxy\" with Hetzner Load Balancer mode requires local.haproxy_values to include a non-empty load-balancer.hetzner.cloud/name or load-balancer.hetzner.cloud/id annotation under controller.service.annotations. Preserve that chart path when using haproxy_values/haproxy_merge_values so Hetzner CCM can adopt the Terraform-managed Load Balancer."
     }
   }
 }

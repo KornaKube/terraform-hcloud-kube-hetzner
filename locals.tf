@@ -2008,12 +2008,12 @@ EOT
 ipam:
   mode: kubernetes
 k8s:
-%{if local.cluster_has_ipv4~}
+%{if local.cluster_has_ipv4}
   requireIPv4PodCIDR: true
-%{endif~}
-%{if local.cluster_has_ipv6~}
+%{endif}
+%{if local.cluster_has_ipv6}
   requireIPv6PodCIDR: true
-%{endif~}
+%{endif}
 
 ipv4:
   enabled: ${local.cluster_has_ipv4}
@@ -2034,14 +2034,14 @@ k8sServicePort: "${local.kubernetes_distribution == "rke2" ? tostring(var.kubern
 
 # Set Tunnel Mode or Native Routing Mode. Cross-network transports force tunnel mode.
 routingMode: "${local.cilium_routing_mode_effective}"
-%{if local.cilium_routing_mode_effective == "native"~}
-%{if local.cluster_has_ipv4~}
+%{if local.cilium_routing_mode_effective == "native"}
+%{if local.cluster_has_ipv4}
 # Set the native routable CIDR
 ipv4NativeRoutingCIDR: "${local.cilium_ipv4_native_routing_cidr}"
-%{endif~}
-%{if local.cluster_has_ipv6~}
+%{endif}
+%{if local.cluster_has_ipv6}
 ipv6NativeRoutingCIDR: "${local.cluster_ipv6_cidr_effective}"
-%{endif~}
+%{endif}
 
 # Bypass iptables Connection Tracking for Pod traffic (only works in Native Routing Mode)
 installNoConntrackIptablesRules: true
@@ -2052,12 +2052,12 @@ tunnelProtocol: "geneve"
 %{if local.multinetwork_overlay_enabled}
 nodePort:
   addresses:
-%{if local.multinetwork_transport_ipv4_enabled~}
+%{if local.multinetwork_transport_ipv4_enabled}
     - "0.0.0.0/0"
-%{endif~}
-%{if local.multinetwork_transport_ipv6_enabled~}
+%{endif}
+%{if local.multinetwork_transport_ipv6_enabled}
     - "::/0"
-%{endif~}
+%{endif}
 %{endif~}
 
 # Perform a gradual roll out on config update.
@@ -2099,9 +2099,9 @@ hubble:
     enabled: true
   metrics:
     enabled:
-%{for metric in var.cilium_hubble_metrics_enabled~}
+%{for metric in var.cilium_hubble_metrics_enabled}
       - "${metric}"
-%{endfor~}
+%{endfor}
 %{endif~}
 
 
@@ -2168,9 +2168,9 @@ EOT
 
   longhorn_values_default = <<EOT
 defaultSettings:
-%{if length(var.autoscaler_nodepools) != 0~}
+%{if length(var.autoscaler_nodepools) != 0}
   kubernetesClusterAutoscalerEnabled: true
-%{endif~}
+%{endif}
   defaultDataPath: /var/longhorn
 persistence:
   defaultFsType: ${var.longhorn_fstype}
@@ -2192,10 +2192,10 @@ node:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-%{if !local.allow_scheduling_on_control_plane~}
+%{if !local.allow_scheduling_on_control_plane}
               - key: "node-role.kubernetes.io/control-plane"
                 operator: DoesNotExist
-%{endif~}
+%{endif}
               - key: "instance.hetzner.cloud/provided-by"
                 operator: NotIn
                 values:
@@ -2213,14 +2213,14 @@ controller:
     "use-forwarded-headers": "true"
     "compute-full-forwarded-for": "true"
     "use-proxy-protocol": "${!local.using_klipper_lb}"
-%{if !local.using_klipper_lb~}
+%{if !local.using_klipper_lb}
   service:
     annotations:
-%{if local.combine_load_balancers_effective~}
+%{if local.combine_load_balancers_effective}
       "load-balancer.hetzner.cloud/id": "${hcloud_load_balancer.control_plane.*.id[0]}"
-%{else~}
+%{else}
       "load-balancer.hetzner.cloud/name": "${local.load_balancer_name}"
-%{endif~}
+%{endif}
       "load-balancer.hetzner.cloud/use-private-ip": "${!local.cross_network_transport_enabled}"
       "load-balancer.hetzner.cloud/disable-private-ingress": "true"
       "load-balancer.hetzner.cloud/disable-public-network": "${!var.load_balancer_enable_public_network}"
@@ -2232,7 +2232,7 @@ controller:
       "load-balancer.hetzner.cloud/health-check-interval": "${var.load_balancer_health_check_interval}"
       "load-balancer.hetzner.cloud/health-check-timeout": "${var.load_balancer_health_check_timeout}"
       "load-balancer.hetzner.cloud/health-check-retries": "${var.load_balancer_health_check_retries}"
-%{if var.load_balancer_hostname != ""~}
+%{if var.load_balancer_hostname != ""}
       "load-balancer.hetzner.cloud/hostname": "${var.load_balancer_hostname}"
 %{endif~}
 %{endif~}
@@ -2243,7 +2243,7 @@ controller:
   hetzner_ccm_values_default = <<EOT
 networking:
   enabled: ${local.hetzner_ccm_networking_enabled}
-%{if local.hetzner_ccm_networking_enabled~}
+%{if local.hetzner_ccm_networking_enabled}
   clusterCIDR: "${local.hetzner_ccm_route_cluster_cidr}"
 %{endif~}
 %{if local.use_robot_ccm~}
@@ -2256,7 +2256,7 @@ args:
   allow-untagged-cloud: ""
   route-reconciliation-period: 30s
   webhook-secure-port: "0"
-%{if local.using_klipper_lb~}
+%{if local.using_klipper_lb}
   secure-port: "10288"
 %{endif~}
 env:
@@ -2268,11 +2268,11 @@ env:
     value: "${!local.using_klipper_lb}"
   HCLOUD_LOAD_BALANCERS_DISABLE_PRIVATE_INGRESS:
     value: "true"
-%{if local.use_robot_ccm || local.cross_network_transport_enabled~}
+%{if local.use_robot_ccm || local.cross_network_transport_enabled}
   HCLOUD_NETWORK_ROUTES_ENABLED:
     value: "false"
 %{endif~}
-%{if local.hetzner_ccm_instances_address_family != "ipv4"~}
+%{if local.hetzner_ccm_instances_address_family != "ipv4"}
   HCLOUD_INSTANCES_ADDRESS_FAMILY:
     value: "${local.hetzner_ccm_instances_address_family}"
 %{endif~}
@@ -2314,7 +2314,7 @@ controller:
   config:
     ssl-redirect: "false"
     forwarded-for: "true"
-%{if !local.using_klipper_lb~}
+%{if !local.using_klipper_lb}
     proxy-protocol: "${join(
   ", ",
   concat(
@@ -2322,20 +2322,20 @@ controller:
     var.haproxy_additional_proxy_protocol_ips
   )
 )}"
-%{endif~}
+%{endif}
   service:
     type: LoadBalancer
     enablePorts:
       quic: false
       stat: false
       prometheus: false
-%{if !local.using_klipper_lb~}
+%{if !local.using_klipper_lb}
     annotations:
-%{if local.combine_load_balancers_effective~}
+%{if local.combine_load_balancers_effective}
       "load-balancer.hetzner.cloud/id": "${hcloud_load_balancer.control_plane.*.id[0]}"
-%{else~}
+%{else}
       "load-balancer.hetzner.cloud/name": "${local.load_balancer_name}"
-%{endif~}
+%{endif}
       "load-balancer.hetzner.cloud/use-private-ip": "${!local.cross_network_transport_enabled}"
       "load-balancer.hetzner.cloud/disable-private-ingress": "true"
       "load-balancer.hetzner.cloud/disable-public-network": "${!var.load_balancer_enable_public_network}"
@@ -2347,7 +2347,7 @@ controller:
       "load-balancer.hetzner.cloud/health-check-interval": "${var.load_balancer_health_check_interval}"
       "load-balancer.hetzner.cloud/health-check-timeout": "${var.load_balancer_health_check_timeout}"
       "load-balancer.hetzner.cloud/health-check-retries": "${var.load_balancer_health_check_retries}"
-%{if var.load_balancer_hostname != ""~}
+%{if var.load_balancer_hostname != ""}
       "load-balancer.hetzner.cloud/hostname": "${var.load_balancer_hostname}"
 %{endif~}
 %{endif~}
@@ -2363,13 +2363,13 @@ deployment:
 service:
   enabled: true
   type: LoadBalancer
-%{if !local.using_klipper_lb~}
+%{if !local.using_klipper_lb}
   annotations:
-%{if local.combine_load_balancers_effective~}
+%{if local.combine_load_balancers_effective}
     "load-balancer.hetzner.cloud/id": "${hcloud_load_balancer.control_plane.*.id[0]}"
-%{else~}
+%{else}
     "load-balancer.hetzner.cloud/name": "${local.load_balancer_name}"
-%{endif~}
+%{endif}
     "load-balancer.hetzner.cloud/use-private-ip": "${!local.cross_network_transport_enabled}"
     "load-balancer.hetzner.cloud/disable-private-ingress": "true"
     "load-balancer.hetzner.cloud/disable-public-network": "${!var.load_balancer_enable_public_network}"
@@ -2381,57 +2381,57 @@ service:
     "load-balancer.hetzner.cloud/health-check-interval": "${var.load_balancer_health_check_interval}"
     "load-balancer.hetzner.cloud/health-check-timeout": "${var.load_balancer_health_check_timeout}"
     "load-balancer.hetzner.cloud/health-check-retries": "${var.load_balancer_health_check_retries}"
-%{if var.load_balancer_hostname != ""~}
+%{if var.load_balancer_hostname != ""}
     "load-balancer.hetzner.cloud/hostname": "${var.load_balancer_hostname}"
 %{endif~}
 %{endif~}
 ports:
-%{if var.traefik_redirect_to_https || !local.using_klipper_lb~}
+%{if var.traefik_redirect_to_https || !local.using_klipper_lb}
   web:
-%{if var.traefik_redirect_to_https~}
+%{if var.traefik_redirect_to_https}
     http:
       redirections:
         entryPoint:
           to: websecure
           scheme: https
           permanent: true
-%{endif~}
-%{if !local.using_klipper_lb~}
+%{endif}
+%{if !local.using_klipper_lb}
     proxyProtocol:
       trustedIPs:
         - 127.0.0.1/32
         - 10.0.0.0/8
-%{for ip in var.traefik_additional_trusted_ips~}
+%{for ip in var.traefik_additional_trusted_ips}
         - "${ip}"
-%{endfor~}
+%{endfor}
     forwardedHeaders:
       trustedIPs:
         - 127.0.0.1/32
         - 10.0.0.0/8
-%{for ip in var.traefik_additional_trusted_ips~}
+%{for ip in var.traefik_additional_trusted_ips}
         - "${ip}"
-%{endfor~}
-%{endif~}
-%{endif~}
-%{if !local.using_klipper_lb~}
+%{endfor}
+%{endif}
+%{endif}
+%{if !local.using_klipper_lb}
   websecure:
     proxyProtocol:
       trustedIPs:
         - 127.0.0.1/32
         - 10.0.0.0/8
-%{for ip in var.traefik_additional_trusted_ips~}
+%{for ip in var.traefik_additional_trusted_ips}
         - "${ip}"
-%{endfor~}
+%{endfor}
     forwardedHeaders:
       trustedIPs:
         - 127.0.0.1/32
         - 10.0.0.0/8
-%{for ip in var.traefik_additional_trusted_ips~}
+%{for ip in var.traefik_additional_trusted_ips}
         - "${ip}"
-%{endfor~}
-%{endif~}
-%{if var.traefik_additional_ports != ""~}
-%{for option in var.traefik_additional_ports~}
+%{endfor}
+%{endif}
+%{if var.traefik_additional_ports != ""}
+%{for option in var.traefik_additional_ports}
   ${option.name}:
     port: ${option.port}
     expose:
@@ -2442,24 +2442,24 @@ ports:
       metrics: false
       accessLogs: false
       tracing: false
-%{if !local.using_klipper_lb~}
+%{if !local.using_klipper_lb}
     proxyProtocol:
       trustedIPs:
         - 127.0.0.1/32
         - 10.0.0.0/8
-%{for ip in var.traefik_additional_trusted_ips~}
+%{for ip in var.traefik_additional_trusted_ips}
         - "${ip}"
-%{endfor~}
+%{endfor}
     forwardedHeaders:
       trustedIPs:
         - 127.0.0.1/32
         - 10.0.0.0/8
-%{for ip in var.traefik_additional_trusted_ips~}
+%{for ip in var.traefik_additional_trusted_ips}
         - "${ip}"
-%{endfor~}
-%{endif~}
-%{endfor~}
-%{endif~}
+%{endfor}
+%{endif}
+%{endfor}
+%{endif}
 %{if var.traefik_pod_disruption_budget~}
 podDisruptionBudget:
   enabled: true
@@ -2472,9 +2472,9 @@ providers:
 %{endif~}
 additionalArguments:
   - "--providers.kubernetesingress.ingressendpoint.publishedservice=${local.ingress_controller_namespace}/traefik"
-%{for option in var.traefik_additional_options~}
+%{for option in var.traefik_additional_options}
   - "${option}"
-%{endfor~}
+%{endfor}
 %{if var.traefik_resource_limits~}
 resources:
   requests:
