@@ -53,6 +53,15 @@ Therefore:
 - After a successful release, cut `CHANGELOG.md`: reset `## [Unreleased]` to an empty placeholder and move the released notes under `## [X.Y.Z] - YYYY-MM-DD`. Commit and push that cleanup directly to `master`.
 - Previous release notes must never remain under `## [Unreleased]`; otherwise the next tag workflow will publish stale notes again.
 
+## Contributor Credit (SUPER IMPORTANT)
+
+The release's contributors list is generated from the commit authors that landed in `master` since the previous tag. Original PR submitters MUST appear there — credit where credit is due.
+
+- Upstream requirement (enforced at merge time, see the `review-pr` skill): community contributions keep the contributor as commit **author** in master history. Squash only when the PR contains solely their commits; use merge/rebase-merge when we pushed fixes on top; cherry-pick with preserved authorship or `Co-authored-by:` trailers when adopting their work into our own branches.
+- Pre-tag check: `git log <prev-tag>..HEAD --format='%an <%ae>' | sort -u` — every community contributor whose fix is in the release must be listed. If someone is missing, fix history/credit BEFORE tagging (after tagging it is public and immutable).
+- Post-release check: the `## 👥 Contributors` section of the live release body must include the original submitters, not just maintainers. If it does not, treat it as a release defect: edit the release body to add them and fix the crediting for next time.
+- Changelog entries for community fixes reference their PR/issue numbers so the human credit is also visible in prose.
+
 ## Workflow
 
 ```dot
@@ -348,6 +357,7 @@ Files that may need version updates:
 ## Quick Checklist
 
 - [ ] Commits analyzed since last release
+- [ ] Contributor credit verified: `git log <prev-tag>..HEAD --format='%an <%ae>' | sort -u` includes every community submitter whose work ships in this release
 - [ ] Release type determined (PATCH/MINOR/MAJOR)
 - [ ] CHANGELOG.md updated
 - [ ] Breaking changes documented with migration steps
@@ -358,5 +368,6 @@ Files that may need version updates:
 - [ ] Release workflow succeeded
 - [ ] GitHub release exists and points at the intended commit
 - [ ] Live GitHub release body contains only content relevant to this release
+- [ ] Live release `## 👥 Contributors` section credits the original PR submitters, not just maintainers
 - [ ] Pinned upgrade notice, if used, covers the previous-series-to-current upgrade path
 - [ ] `CHANGELOG.md` is cut after release, with a clean `[Unreleased]` section
