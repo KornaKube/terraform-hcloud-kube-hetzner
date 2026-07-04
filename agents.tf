@@ -130,13 +130,7 @@ locals {
       server    = local.k3s_agent_join_endpoint_by_node[k]
       token     = local.cluster_token
       # Kubelet arg precedence (last wins): local.kubelet_arg < global_kubelet_args < agent_kubelet_args < v.kubelet_args
-      kubelet-arg = concat(
-        local.kubelet_arg,
-        v.swap_size != "" || v.zram_size != "" ? ["fail-swap-on=false"] : [],
-        var.global_kubelet_args,
-        var.agent_kubelet_args,
-        v.kubelet_args
-      )
+      kubelet-arg   = local.agent_effective_kubelet_args_by_node[k]
       flannel-iface = local.flannel_iface
       node-ip       = local.multinetwork_overlay_enabled ? join(",", compact([local.multinetwork_transport_ipv4_enabled ? module.agents[k].ipv4_address : null, local.multinetwork_transport_ipv6_enabled ? module.agents[k].ipv6_address : null])) : module.agents[k].private_ipv4_address
       node-label    = v.labels
@@ -163,16 +157,10 @@ locals {
       server    = local.rke2_agent_join_endpoint_by_node[k]
       token     = local.cluster_token
       # Kubelet arg precedence (last wins): local.kubelet_arg < global_kubelet_args < agent_kubelet_args < v.kubelet_args
-      kubelet-arg = concat(
-        local.kubelet_arg,
-        v.swap_size != "" || v.zram_size != "" ? ["fail-swap-on=false"] : [],
-        var.global_kubelet_args,
-        var.agent_kubelet_args,
-        v.kubelet_args
-      )
-      node-ip    = local.multinetwork_overlay_enabled ? join(",", compact([local.multinetwork_transport_ipv4_enabled ? module.agents[k].ipv4_address : null, local.multinetwork_transport_ipv6_enabled ? module.agents[k].ipv6_address : null])) : module.agents[k].private_ipv4_address
-      node-label = v.labels
-      node-taint = v.taints
+      kubelet-arg = local.agent_effective_kubelet_args_by_node[k]
+      node-ip     = local.multinetwork_overlay_enabled ? join(",", compact([local.multinetwork_transport_ipv4_enabled ? module.agents[k].ipv4_address : null, local.multinetwork_transport_ipv6_enabled ? module.agents[k].ipv6_address : null])) : module.agents[k].private_ipv4_address
+      node-label  = v.labels
+      node-taint  = v.taints
     },
     local.multinetwork_overlay_enabled ? {
       node-external-ip = join(",", compact([local.multinetwork_transport_ipv4_enabled ? module.agents[k].ipv4_address : null, local.multinetwork_transport_ipv6_enabled ? module.agents[k].ipv6_address : null]))

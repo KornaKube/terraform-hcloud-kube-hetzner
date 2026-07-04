@@ -376,7 +376,7 @@ locals {
       disable-cloud-controller    = true
       disable-kube-proxy          = !var.enable_kube_proxy
       disable                     = local.disable_rke2_extras
-      kubelet-arg                 = concat(local.kubelet_arg, v.swap_size != "" || v.zram_size != "" ? ["fail-swap-on=false"] : [], var.global_kubelet_args, var.control_plane_kubelet_args, v.kubelet_args)
+      kubelet-arg                 = local.control_plane_effective_kubelet_args_by_node[k]
       kube-apiserver-arg          = concat(local.kube_apiserver_arg, var.enable_secrets_encryption ? ["encryption-provider-config=${local.secrets_encryption_config_file}"] : [])
       kube-controller-manager-arg = local.kube_controller_manager_arg
       node-ip                     = module.control_planes[k].private_ipv4_address
@@ -434,7 +434,7 @@ locals {
       disable                  = local.disable_extras
       https-listen-port        = var.kubernetes_api_port
       # Kubelet arg precedence (last wins): local.kubelet_arg < global_kubelet_args < control_plane_kubelet_args < v.kubelet_args
-      kubelet-arg                 = concat(local.kubelet_arg, v.swap_size != "" || v.zram_size != "" ? ["fail-swap-on=false"] : [], var.global_kubelet_args, var.control_plane_kubelet_args, v.kubelet_args)
+      kubelet-arg                 = local.control_plane_effective_kubelet_args_by_node[k]
       kube-apiserver-arg          = concat(local.kube_apiserver_arg, var.enable_secrets_encryption ? ["encryption-provider-config=${local.secrets_encryption_config_file}"] : [])
       kube-controller-manager-arg = local.kube_controller_manager_arg
       flannel-iface               = local.flannel_iface

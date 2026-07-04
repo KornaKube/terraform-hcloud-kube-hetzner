@@ -22,6 +22,17 @@ resource "terraform_data" "validation_contract" {
       error_message = "enabled_architectures must include every architecture used by control_plane_nodepools, agent_nodepools, and autoscaler_nodepools."
     }
 
+    precondition {
+      condition = (
+        local.kubernetes_distribution != "rke2" ||
+        alltrue([
+          for node_key, reserved_memory_mi in local.validation_control_plane_reserved_memory_mi_by_node :
+          reserved_memory_mi == null || try(reserved_memory_mi <= local.hcloud_server_type_memory_mi_by_name[local.control_plane_nodes[node_key].server_type] * 0.5, true)
+        ])
+      )
+      error_message = "RKE2 control-plane kubelet reserved memory must not exceed 50% of the server type's RAM. Use a larger control-plane server_type or set custom kubelet_args with lower kube-reserved/system-reserved memory."
+    }
+
     # Moved from variable "network_region" validation near variables.tf:217.
     precondition {
       condition     = contains(keys(local.validation_locations_by_region), var.network_region)

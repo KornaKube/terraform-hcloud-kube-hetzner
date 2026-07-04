@@ -260,6 +260,10 @@ module "kube-hetzner" {
       # os          = "leapmicro" # valid: "leapmicro" | "microos"
       # swap_size   = "2G" # remember to add the suffix, examples: 512M, 1G
       # zram_size   = "2G" # remember to add the suffix, examples: 512M, 1G
+      # Default control-plane kubelet_args are size-aware when left at the schema default:
+      # kube-reserved memory is 512Mi below 8GB RAM, 1024Mi below 16GB, and 1500Mi at 16GB+.
+      # RKE2 control planes on small nodes can fail static-pod admission if reservations are oversized.
+      # Custom kubelet_args are passed through unchanged.
       # kubelet_args = ["kube-reserved=cpu=250m,memory=1500Mi,ephemeral-storage=1Gi", "system-reserved=cpu=250m,memory=300Mi"]
 
       # Fine-grained control over placement groups. Leave unset to auto-shard count-based nodepools every 10 servers.
@@ -340,6 +344,8 @@ module "kube-hetzner" {
       # subnet_ip_range = "10.0.0.0/16"  # Optional: override default subnet range
       # swap_size   = "2G" # remember to add the suffix, examples: 512M, 1G
       # zram_size   = "2G" # remember to add the suffix, examples: 512M, 1G
+      # Agent defaults use the same resolver as control planes; the default kube-reserved memory remains 300Mi.
+      # Custom kubelet_args are passed through unchanged.
       # kubelet_args = ["kube-reserved=cpu=50m,memory=300Mi,ephemeral-storage=1Gi", "system-reserved=cpu=250m,memory=300Mi"]
       # append_random_suffix = false
 
@@ -604,7 +610,8 @@ module "kube-hetzner" {
   #       effect= "NoExecute" # or NoSchedule, PreferNoSchedule
   #      }
   #    ]
-  #    # kubelet_args = ["kube-reserved=cpu=250m,memory=1500Mi,ephemeral-storage=1Gi", "system-reserved=cpu=250m,memory=300Mi"]
+  #    # Autoscaler defaults use the same resolver as agents; the default kube-reserved memory remains 300Mi.
+  #    # kubelet_args = ["kube-reserved=cpu=50m,memory=300Mi,ephemeral-storage=1Gi", "system-reserved=cpu=250m,memory=300Mi"]
   #    # swap_size = "2G"
   #    # zram_size = "2G"
   #  }

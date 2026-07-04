@@ -137,6 +137,8 @@ data "http" "my_ipv4" {
   }
 }
 
+data "hcloud_server_types" "all" {}
+
 data "hcloud_servers" "existing_control_plane_nodes" {
   with_selector = "provisioner=terraform,engine=${local.kubernetes_distribution},cluster=${var.cluster_name},role=control_plane_node"
 }

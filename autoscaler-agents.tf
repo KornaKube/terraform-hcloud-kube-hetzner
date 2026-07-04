@@ -201,7 +201,7 @@ data "cloudinit_config" "autoscaler_config" {
             server = local.k3s_autoscaler_join_endpoint_by_index[count.index]
             token  = local.cluster_token
             # Kubelet arg precedence (last wins): local.kubelet_arg < global_kubelet_args < autoscaler_kubelet_args < nodepool.kubelet_args
-            kubelet-arg   = concat(local.kubelet_arg, var.autoscaler_nodepools[count.index].swap_size != "" || var.autoscaler_nodepools[count.index].zram_size != "" ? ["fail-swap-on=false"] : [], var.global_kubelet_args, var.autoscaler_kubelet_args, var.autoscaler_nodepools[count.index].kubelet_args)
+            kubelet-arg   = local.autoscaler_effective_kubelet_args[count.index]
             flannel-iface = local.flannel_iface
             node-label    = concat(local.default_agent_labels, [for k, v in var.autoscaler_nodepools[count.index].labels : "${k}=${v}"], var.autoscaler_nodepools[count.index].swap_size != "" || var.autoscaler_nodepools[count.index].zram_size != "" ? local.swap_node_label : [])
             node-taint    = compact(concat(local.default_agent_taints, [for taint in var.autoscaler_nodepools[count.index].taints : "${taint.key}=${tostring(taint.value)}:${taint.effect}"]))
@@ -258,7 +258,7 @@ data "cloudinit_config" "autoscaler_config_rke2" {
             server = local.rke2_autoscaler_join_endpoint_by_index[count.index]
             token  = local.cluster_token
             # Kubelet arg precedence (last wins): local.kubelet_arg < global_kubelet_args < autoscaler_kubelet_args < nodepool.kubelet_args
-            kubelet-arg = concat(local.kubelet_arg, var.autoscaler_nodepools[count.index].swap_size != "" || var.autoscaler_nodepools[count.index].zram_size != "" ? ["fail-swap-on=false"] : [], var.global_kubelet_args, var.autoscaler_kubelet_args, var.autoscaler_nodepools[count.index].kubelet_args)
+            kubelet-arg = local.autoscaler_effective_kubelet_args[count.index]
             node-label  = concat(local.default_agent_labels, [for k, v in var.autoscaler_nodepools[count.index].labels : "${k}=${v}"], var.autoscaler_nodepools[count.index].swap_size != "" || var.autoscaler_nodepools[count.index].zram_size != "" ? local.swap_node_label : [])
             node-taint  = compact(concat(local.default_agent_taints, [for taint in var.autoscaler_nodepools[count.index].taints : "${taint.key}=${tostring(taint.value)}:${taint.effect}"]))
             selinux     = var.enable_selinux

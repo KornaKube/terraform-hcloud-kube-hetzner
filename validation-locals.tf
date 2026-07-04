@@ -137,6 +137,49 @@ locals {
     local.validation_autoscaler_server_types
   )
 
+  validation_kubelet_reserved_memory_unit_to_mi = {
+    "Ki" = 0.0009765625
+    "Mi" = 1
+    "Gi" = 1024
+    "K"  = 0.00095367431640625
+    "M"  = 0.95367431640625
+    "G"  = 953.67431640625
+  }
+
+  validation_control_plane_reserved_arg_values_by_node = {
+    for node_key, kubelet_args in local.control_plane_effective_kubelet_args_by_node :
+    node_key => {
+      kube_reserved = [
+        for arg in kubelet_args : trimprefix(arg, "kube-reserved=")
+        if startswith(arg, "kube-reserved=")
+      ]
+      system_reserved = [
+        for arg in kubelet_args : trimprefix(arg, "system-reserved=")
+        if startswith(arg, "system-reserved=")
+      ]
+    }
+  }
+
+  validation_control_plane_reserved_memory_matches_by_node = {
+    for node_key, reserved_args in local.validation_control_plane_reserved_arg_values_by_node :
+    node_key => {
+      kube_reserved = try(regex("(^|,)memory=([0-9]+)(Ki|Mi|Gi|K|M|G)(,|$)", element(reserved_args.kube_reserved, length(reserved_args.kube_reserved) - 1)), null)
+      system_reserved = try(
+        regex("(^|,)memory=([0-9]+)(Ki|Mi|Gi|K|M|G)(,|$)", element(reserved_args.system_reserved, length(reserved_args.system_reserved) - 1)),
+        null
+      )
+    }
+  }
+
+  validation_control_plane_reserved_memory_mi_by_node = {
+    for node_key, matches in local.validation_control_plane_reserved_memory_matches_by_node :
+    node_key => try(
+      tonumber(matches.kube_reserved[1]) * local.validation_kubelet_reserved_memory_unit_to_mi[matches.kube_reserved[2]] +
+      tonumber(matches.system_reserved[1]) * local.validation_kubelet_reserved_memory_unit_to_mi[matches.system_reserved[2]],
+      null
+    )
+  }
+
   validation_primary_network_agent_subnet_indexes = (
     var.network_subnet_mode == "per_nodepool"
     ? range(length(var.agent_nodepools))
