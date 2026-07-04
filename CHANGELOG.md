@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Upgrade Notes
+
+- **One-time kustomization re-run**: the kustomization trigger state now includes the new deploy toggles and the rendered `kustomization.yaml` hash, so the first `terraform apply` after upgrading re-runs the post-install kustomization once (an idempotent `kubectl apply -k` — no resources are destroyed or recreated). Verified on a live fresh-apply gate: all nodes Ready, upgrade tooling deployed under defaults, toggle flips correctly re-run the kustomization.
+- Both new features preserve existing behavior at their defaults (`kustomize_apply_options = ["--wait=true"]`, both toggles `true`).
+
 ### 🚀 New Features
 
 - **Configurable User Kustomization Apply Flags** - Added `kustomize_apply_options` for passing validated `kubectl apply` flags such as server-side apply to user kustomizations. Defaults to `["--wait=true"]` to preserve existing behavior (#2218).
