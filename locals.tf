@@ -202,11 +202,11 @@ locals {
     apiVersion = "kustomize.config.k8s.io/v1beta1"
     kind       = "Kustomization"
     resources = concat(
-      [
-        "kured-base.yaml",
+      var.enable_kured ? ["kured-base.yaml"] : [],
+      var.enable_system_upgrade_controller ? [
         "system-upgrade-controller.yaml",
         "system-upgrade-controller-crd.yaml"
-      ],
+      ] : [],
       var.hetzner_ccm_use_helm ? ["hcloud-ccm-helm.yaml"] : ["ccm-networks.yaml"],
       var.disable_hetzner_csi ? [] : ["hcloud-csi.yaml"],
       var.traefik_provider_kubernetes_gateway_enabled ? ["https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.gateway_api_version}/standard-install.yaml"] : [],
@@ -219,21 +219,20 @@ locals {
       var.enable_rancher ? ["rancher.yaml"] : [],
       var.rancher_registration_manifest_url != "" ? [var.rancher_registration_manifest_url] : []
     ),
-    patches = concat([
-      {
-        target = {
-          group     = "apps"
-          version   = "v1"
-          kind      = "Deployment"
-          name      = "system-upgrade-controller"
-          namespace = "system-upgrade"
+    patches = concat(
+      var.enable_system_upgrade_controller ? [
+        {
+          target = {
+            group     = "apps"
+            version   = "v1"
+            kind      = "Deployment"
+            name      = "system-upgrade-controller"
+            namespace = "system-upgrade"
+          }
+          patch = file("${path.module}/kustomize/system-upgrade-controller.yaml")
         }
-        patch = file("${path.module}/kustomize/system-upgrade-controller.yaml")
-      },
-      {
-        path = "kured.yaml"
-      }
-      ],
+      ] : [],
+      var.enable_kured ? [{ path = "kured.yaml" }] : [],
       var.hetzner_ccm_use_helm ? [] : [{ path = "ccm.yaml" }]
     )
   })
