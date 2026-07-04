@@ -340,14 +340,13 @@ resource "terraform_data" "agents" {
     hcloud_load_balancer_service.control_plane,
     hcloud_load_balancer_service.control_plane_rke2_supervisor,
     hcloud_network_subnet.control_plane,
-    # CCM (deployed by the kustomization) is what untaints freshly-joined
-    # agents. Without this edge, agents start concurrently with the
-    # kustomization and race the untaint, so the agent never settles and the
-    # start provisioner times out (exit 124) on a fresh single apply.
-    # No cycle: terraform_data.kustomization depends only on control_planes,
-    # the load balancer, rancher_bootstrap, longhorn_volume and
-    # kube_system_secrets - none of which depend on terraform_data.agents.
-    terraform_data.kustomization
+    # CCM (deployed by the distribution-specific kustomization bootstrap) is
+    # what untaints freshly-joined agents. Without this edge, agents start
+    # concurrently with the kustomization and race the untaint, so the agent
+    # never settles and the start provisioner times out (exit 124) on a fresh
+    # single apply. The k3s/RKE2 resources are count-gated; only one exists.
+    terraform_data.kustomization,
+    terraform_data.rke2_kustomization,
   ]
 }
 moved {
