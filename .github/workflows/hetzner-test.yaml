@@ -34,6 +34,10 @@ jobs:
     if: ${{ vars.TEST_IN_HETZNER == '1' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     strategy:
       fail-fast: false
+      # Cap concurrent clusters: 6 parallel test clusters exhaust the CI project's
+      # server and load-balancer quotas (seen live: resource_limit_exceeded + LB IP
+      # wait timeouts). 2 clusters x ~4 servers stays comfortably inside limits.
+      max-parallel: 2
       matrix:
         engine: [terraform, tofu]
         preset: [default, nginx_ingress, rke2]
