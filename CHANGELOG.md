@@ -67,6 +67,7 @@ This is the v3 major-release line. Before upgrading from any `v2.x` release:
 
 ### 🐛 Bug Fixes
 
+- **Kubeconfig Structural Rename Safety** - Rewrote generated kubeconfig endpoint and identity renames through parsed YAML so certificate blobs and other fields containing `default` are no longer mutated by global string replacement.
 - **Ingress Load Balancer Destroy Cleanup** - Added fail-open destroy-time cleanup for module-managed ingress LoadBalancer Services across k3s and RKE2 so Hetzner CCM removes the adopted ingress load balancer before Terraform tears down nodes and network attachments. Found by the v3 live gate after a surviving nginx LB blocked network/subnet destroy.
 - **Ingress Hook Bootstrap Scheduling** - Added hook-scoped bootstrap tolerations to ingress-nginx admission patch jobs and the HAProxy CRD hook so managed ingress Helm installs can finish when v3 bootstraps kustomizations before agent nodes join. Controller Deployments intentionally keep their existing scheduling semantics. Found by the live CI gate via the nginx admission hook deadlock.
 - **Ingress Load Balancer Annotation Rendering** - Fixed ingress-nginx, Traefik, and HAProxy Helm values templates so Hetzner Load Balancer adoption annotations stay nested at the chart-specific Service annotation path instead of being stripped to the values document root by Terraform template trim markers. Found by the v3 CI gate, with a new plan-time semantic contract for the rendered values.
@@ -133,6 +134,10 @@ This is the v3 major-release line. Before upgrading from any `v2.x` release:
 - **RKE2 Registry Bootstrap** - Initial cloud-init now writes `registries_config` to `/etc/rancher/rke2/registries.yaml` for RKE2 clusters instead of the k3s path, so custom registries are available before first RKE2 start.
 
 ### 🔧 Changes
+- **SSH Port Validation** - Tightened `ssh_port` input validation so port `0` and fractional values fail early.
+- **SMB CSI Chart Pinning** - Pinned the `csi_driver_smb_version` default to reviewed chart `1.20.3` while preserving `"*"` as an explicit floating opt-in, and removed the unused NFS CSI template scaffold.
+- 🔧 **Disabled Addon Fetch Gating** - `enable_kured = false` and `enable_system_upgrade_controller = false` now skip the corresponding GitHub release/manifest HTTP data sources entirely; disabled clusters may see one idempotent kustomization re-run as addon trigger state normalizes disabled remote manifest inputs to empty strings.
+- **Sensitive Kustomization Backup** - The generated kustomization backup now uses Terraform's sensitive local-file resource so Rancher registration manifest URLs are treated as sensitive on disk; rotate any Rancher registration token that may have been written by an earlier backup.
 
 - **Hetzner CI Orphan Sweeper** - Added a scheduled/manual sweeper for stale `kh-ci-*` Hetzner CI resources. It skips active Hetzner test runs, defaults to dry-run, and requires prefix-anchored names plus age gates before deletion.
 - **Render Harness CI Gate** - Added a hermetic rendered-template harness and negative validation-contract plan fixture so Helm values, ingress LB annotations, cloud-init YAML, shell templates, and key v3 validation preconditions are checked before live cluster gates.

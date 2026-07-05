@@ -119,8 +119,8 @@ variable "ssh_port" {
   default     = 22
 
   validation {
-    condition     = var.ssh_port >= 0 && var.ssh_port <= 65535
-    error_message = "The SSH port must use a valid range from 0 to 65535."
+    condition     = var.ssh_port >= 1 && var.ssh_port <= 65535 && floor(var.ssh_port) == var.ssh_port
+    error_message = "The SSH port must be an integer between 1 and 65535."
   }
 }
 
@@ -2547,8 +2547,8 @@ variable "enable_csi_driver_smb" {
 
 variable "csi_driver_smb_version" {
   type        = string
-  default     = "*"
-  description = "Version of csi_driver_smb. See https://github.com/kubernetes-csi/csi-driver-smb/releases for the available versions."
+  default     = "1.20.3"
+  description = "Version of the csi-driver-smb Helm chart. Defaults to the reviewed chart version; set to \"*\" to opt into floating to the latest chart available from the upstream repo."
 }
 
 variable "csi_driver_smb_helmchart_bootstrap" {

@@ -563,9 +563,9 @@ resource "terraform_data" "kustomization" {
     system_upgrade_enable_eviction   = tostring(var.system_upgrade_enable_eviction)
     rendered_addons_sha = sha256(join("\n---kube-hetzner---\n", compact([
       local.kustomization_backup_yaml,
-      var.enable_kured ? data.http.kured_manifest.response_body : "",
-      var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_manifest.response_body : "",
-      var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_crd.response_body : "",
+      local.kured_manifest_body,
+      local.system_upgrade_controller_manifest_body,
+      local.system_upgrade_controller_crd_body,
       local.gateway_api_standard_crds_manifest,
       templatefile(
         "${path.module}/templates/traefik_ingress.yaml.tpl",
@@ -705,17 +705,17 @@ resource "terraform_data" "kustomization" {
 
   # Upload remote addon manifests as local kustomize resources to avoid release-asset fetch issues on the control plane.
   provisioner "file" {
-    content     = var.enable_kured ? data.http.kured_manifest.response_body : ""
+    content     = local.kured_manifest_body
     destination = "/var/post_install/kured-base.yaml"
   }
 
   provisioner "file" {
-    content     = var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_manifest.response_body : ""
+    content     = local.system_upgrade_controller_manifest_body
     destination = "/var/post_install/system-upgrade-controller.yaml"
   }
 
   provisioner "file" {
-    content     = var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_crd.response_body : ""
+    content     = local.system_upgrade_controller_crd_body
     destination = "/var/post_install/system-upgrade-controller-crd.yaml"
   }
 
@@ -1069,9 +1069,9 @@ resource "terraform_data" "rke2_kustomization" {
     system_upgrade_enable_eviction   = tostring(var.system_upgrade_enable_eviction)
     rendered_addons_sha = sha256(join("\n---kube-hetzner---\n", compact([
       local.kustomization_backup_yaml,
-      var.enable_kured ? data.http.kured_manifest.response_body : "",
-      var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_manifest.response_body : "",
-      var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_crd.response_body : "",
+      local.kured_manifest_body,
+      local.system_upgrade_controller_manifest_body,
+      local.system_upgrade_controller_crd_body,
       local.gateway_api_standard_crds_manifest,
       templatefile(
         "${path.module}/templates/traefik_ingress.yaml.tpl",
@@ -1209,17 +1209,17 @@ resource "terraform_data" "rke2_kustomization" {
 
   # Upload remote addon manifests as local kustomize resources to avoid release-asset fetch issues on the control plane.
   provisioner "file" {
-    content     = var.enable_kured ? data.http.kured_manifest.response_body : ""
+    content     = local.kured_manifest_body
     destination = "/var/post_install/kured-base.yaml"
   }
 
   provisioner "file" {
-    content     = var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_manifest.response_body : ""
+    content     = local.system_upgrade_controller_manifest_body
     destination = "/var/post_install/system-upgrade-controller.yaml"
   }
 
   provisioner "file" {
-    content     = var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_crd.response_body : ""
+    content     = local.system_upgrade_controller_crd_body
     destination = "/var/post_install/system-upgrade-controller-crd.yaml"
   }
 

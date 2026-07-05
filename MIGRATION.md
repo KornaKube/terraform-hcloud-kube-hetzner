@@ -58,6 +58,7 @@ Before applying a v3 plan:
   `ssh_additional_public_keys`. Set `ssh_authorized_keys_exclusive = true`
   only if you want strict replacement semantics with exactly the
   module-managed keys.
+- If you set `rancher_registration_manifest_url`, rotate the Rancher registration token because older kustomization backup files may have written that credential to disk.
 - Prefer blue/green migration when the plan is hard to explain.
 
 ### What the first v3 apply does to existing nodes

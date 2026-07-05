@@ -134,6 +134,10 @@ locals {
   kured_version  = length(data.http.kured_release) == 0 ? var.kured_version : jsondecode(data.http.kured_release[0].response_body).tag_name
   calico_version = length(data.http.calico_release) == 0 ? var.calico_version : jsondecode(data.http.calico_release[0].response_body).tag_name
 
+  kured_manifest_body                     = var.enable_kured ? data.http.kured_manifest[0].response_body : ""
+  system_upgrade_controller_manifest_body = var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_manifest[0].response_body : ""
+  system_upgrade_controller_crd_body      = var.enable_system_upgrade_controller ? data.http.system_upgrade_controller_crd[0].response_body : ""
+
   # Determine kured YAML suffix based on version (>= 1.20.0 uses -combined.yaml, < 1.20.0 uses -dockerhub.yaml)
   kured_yaml_suffix = provider::semvers::compare(local.kured_version, "1.20.0") >= 0 ? "combined" : "dockerhub"
 
@@ -1796,6 +1800,12 @@ for service_name in $INGRESS_SERVICE_NAMES; do
   $KUBECTL -n "$INGRESS_NAMESPACE" delete "service/$service_name" --ignore-not-found=true --wait=false || true
   $KUBECTL -n "$INGRESS_NAMESPACE" wait --for=delete "service/$service_name" --timeout=120s || true
 done
+
+# Settle window: after the Service is gone the CCM detaches/deletes the adopted
+# Hetzner LB asynchronously. Without this pause, terraform's own LB/network
+# detach races the CCM's and the API returns resource_already_detaching
+# (observed in CI destroy steps). Bounded and fail-open by design.
+sleep 45
 
 exit 0
 KH_INGRESS_LB_CLEANUP

@@ -17,11 +17,11 @@ Dependency edges: 007→001, 008→001, 008→004 (same data sources — 004 lan
 | Plan | Title | Status |
 |---|---|---|
 | 001 | Render harness + negative contract tests | DONE |
-| 002 | Kubeconfig structural rewrite | TODO |
-| 003 | Sensitive backup file | TODO |
-| 004 | Gate disabled-addon fetches | TODO |
-| 005 | Pin CSI chart sources / remove dead NFS template | TODO |
-| 006 | ssh_port validation | TODO |
+| 002 | Kubeconfig structural rewrite | DONE |
+| 003 | Sensitive backup file | DONE |
+| 004 | Gate disabled-addon fetches | DONE |
+| 005 | Pin CSI chart sources / remove dead NFS template | DONE |
+| 006 | ssh_port validation | DONE |
 | 007 | Shell-safe user inputs | TODO |
 | 008 | Deterministic addon versions | TODO |
 | 009 | CI orphan sweeper | DONE |

@@ -48,16 +48,34 @@ locals {
   ))
   kubeconfig_server_host = provider::assert::ipv6(local.kubeconfig_server_address) ? "[${local.kubeconfig_server_address}]" : local.kubeconfig_server_address
   kubeconfig_server      = "https://${local.kubeconfig_server_host}:${var.kubernetes_api_port}"
-  kubeconfig_external = replace(
-    replace(
-      ssh_sensitive_resource.kubeconfig.result,
-      "https://127.0.0.1:${var.kubernetes_api_port}",
-      local.kubeconfig_server
-    ),
-    "default",
-    var.cluster_name
-  )
-  kubeconfig_parsed = yamldecode(local.kubeconfig_external)
+  kubeconfig_raw         = yamldecode(ssh_sensitive_resource.kubeconfig.result)
+  kubeconfig_rewritten = merge(local.kubeconfig_raw, {
+    clusters = [
+      for index, cluster in local.kubeconfig_raw["clusters"] : index == 0 ? merge(cluster, {
+        name = cluster["name"] == "default" ? var.cluster_name : cluster["name"]
+        cluster = merge(cluster["cluster"], {
+          server = local.kubeconfig_server
+        })
+      }) : cluster
+    ]
+    contexts = [
+      for index, context in local.kubeconfig_raw["contexts"] : index == 0 ? merge(context, {
+        name = context["name"] == "default" ? var.cluster_name : context["name"]
+        context = merge(context["context"], {
+          cluster = context["context"]["cluster"] == "default" ? var.cluster_name : context["context"]["cluster"]
+          user    = context["context"]["user"] == "default" ? var.cluster_name : context["context"]["user"]
+        })
+      }) : context
+    ]
+    users = [
+      for index, user in local.kubeconfig_raw["users"] : index == 0 ? merge(user, {
+        name = user["name"] == "default" ? var.cluster_name : user["name"]
+      }) : user
+    ]
+    "current-context" = local.kubeconfig_raw["current-context"] == "default" ? var.cluster_name : local.kubeconfig_raw["current-context"]
+  })
+  kubeconfig_external = yamlencode(local.kubeconfig_rewritten)
+  kubeconfig_parsed   = local.kubeconfig_rewritten
   kubeconfig_data = {
     host                   = local.kubeconfig_parsed["clusters"][0]["cluster"]["server"]
     client_certificate     = base64decode(local.kubeconfig_parsed["users"][0]["user"]["client-certificate-data"])

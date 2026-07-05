@@ -738,9 +738,9 @@ module "kube-hetzner" {
 
   # To enable Hetzner Storage Box support, you can enable csi-driver-smb, default is "false".
   # enable_csi_driver_smb = true
-  # If you want to specify the version for csi-driver-smb, set it below - otherwise it'll use the latest version available.
+  # csi-driver-smb defaults to a reviewed chart version. Set "*" only if you intentionally want to float to the latest chart available.
   # See https://github.com/kubernetes-csi/csi-driver-smb/releases for the available versions.
-  # csi_driver_smb_version = "v1.16.0"
+  # csi_driver_smb_version = "1.20.3"
 
   # iscsid is always enabled on all nodes by kube-hetzner.
   # This keeps iSCSI-backed storage (for example Longhorn) working consistently after node reboots.

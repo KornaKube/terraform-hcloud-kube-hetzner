@@ -404,6 +404,92 @@ def run_cloudinit_checks(scratch: TerraformScratch) -> None:
         print_pass(str(template_path.relative_to(REPO_ROOT)), "yamldecode accepted cloud-init structure")
 
 
+def run_kubeconfig_checks(scratch: TerraformScratch) -> None:
+    cert_blob = "ZGVmYXVsdAdefaultXYZ"
+    kubeconfig_sample = """apiVersion: v1
+kind: Config
+clusters:
+- name: default
+  cluster:
+    server: https://127.0.0.1:6443
+    certificate-authority-data: ZGVmYXVsdAdefaultXYZ
+contexts:
+- name: default
+  context:
+    cluster: default
+    user: default
+current-context: default
+users:
+- name: default
+  user:
+    client-certificate-data: Y2xpZW50ZGVmYXVsdAdefaultXYZ
+    client-key-data: a2V5ZGVmYXVsdAdefaultXYZ
+"""
+    (scratch.root / "kubeconfig_check.tf").write_text(
+        "\n".join(
+            [
+                "locals {",
+                f"  kubeconfig_check_sample = {hcl_string(kubeconfig_sample)}",
+                '  kubeconfig_check_cluster_name = "mycluster"',
+                '  kubeconfig_check_server = "https://203.0.113.10:6443"',
+                "  kubeconfig_check_raw = yamldecode(local.kubeconfig_check_sample)",
+                "  kubeconfig_check_rewritten = merge(local.kubeconfig_check_raw, {",
+                "    clusters = [",
+                "      for index, cluster in local.kubeconfig_check_raw[\"clusters\"] : index == 0 ? merge(cluster, {",
+                "        name = cluster[\"name\"] == \"default\" ? local.kubeconfig_check_cluster_name : cluster[\"name\"]",
+                "        cluster = merge(cluster[\"cluster\"], {",
+                "          server = local.kubeconfig_check_server",
+                "        })",
+                "      }) : cluster",
+                "    ]",
+                "    contexts = [",
+                "      for index, context in local.kubeconfig_check_raw[\"contexts\"] : index == 0 ? merge(context, {",
+                "        name = context[\"name\"] == \"default\" ? local.kubeconfig_check_cluster_name : context[\"name\"]",
+                "        context = merge(context[\"context\"], {",
+                "          cluster = context[\"context\"][\"cluster\"] == \"default\" ? local.kubeconfig_check_cluster_name : context[\"context\"][\"cluster\"]",
+                "          user    = context[\"context\"][\"user\"] == \"default\" ? local.kubeconfig_check_cluster_name : context[\"context\"][\"user\"]",
+                "        })",
+                "      }) : context",
+                "    ]",
+                "    users = [",
+                "      for index, user in local.kubeconfig_check_raw[\"users\"] : index == 0 ? merge(user, {",
+                "        name = user[\"name\"] == \"default\" ? local.kubeconfig_check_cluster_name : user[\"name\"]",
+                "      }) : user",
+                "    ]",
+                "    \"current-context\" = local.kubeconfig_check_raw[\"current-context\"] == \"default\" ? local.kubeconfig_check_cluster_name : local.kubeconfig_check_raw[\"current-context\"]",
+                "  })",
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    encoded = scratch.console("jsonencode(local.kubeconfig_check_rewritten)")
+    rewritten = json.loads(json.loads(encoded))
+    if rewritten["clusters"][0]["name"] != "mycluster":
+        fail("kubeconfig structural rewrite", "cluster name was not rewritten")
+    if rewritten["contexts"][0]["name"] != "mycluster":
+        fail("kubeconfig structural rewrite", "context name was not rewritten")
+    if rewritten["users"][0]["name"] != "mycluster":
+        fail("kubeconfig structural rewrite", "user name was not rewritten")
+    if rewritten["contexts"][0]["context"]["cluster"] != "mycluster":
+        fail("kubeconfig structural rewrite", "context cluster reference was not rewritten")
+    if rewritten["contexts"][0]["context"]["user"] != "mycluster":
+        fail("kubeconfig structural rewrite", "context user reference was not rewritten")
+    if rewritten["current-context"] != "mycluster":
+        fail("kubeconfig structural rewrite", "current-context was not rewritten")
+    if rewritten["clusters"][0]["cluster"]["server"] != "https://203.0.113.10:6443":
+        fail("kubeconfig structural rewrite", "cluster server was not rewritten")
+    if rewritten["clusters"][0]["cluster"]["certificate-authority-data"] != cert_blob:
+        fail("kubeconfig structural rewrite", "certificate-authority-data was mutated")
+
+    print_pass(
+        "kubeconfig structural rewrite",
+        "renamed only kubeconfig identity fields and preserved certificate data containing defaultXYZ",
+    )
+
+
 def run_shell_checks(scratch: TerraformScratch) -> None:
     for template_path in sorted((REPO_ROOT / "templates").glob("*.sh.tpl")):
         script = scratch.render_string(template_path)
@@ -433,6 +519,7 @@ def main() -> int:
         run_helm_checks(scratch)
         run_shell_checks(scratch)
         run_cloudinit_checks(scratch)
+        run_kubeconfig_checks(scratch)
     except HarnessFailure as exc:
         print(str(exc), file=sys.stderr)
         return 1
