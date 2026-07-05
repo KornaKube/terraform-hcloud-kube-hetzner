@@ -63,6 +63,7 @@ jobs:
   render-harness:
     runs-on: ubuntu-latest
     name: Render harness and contract negatives
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -71,6 +72,9 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.15.0
+          # The wrapper does not forward stdin; render_harness.py drives
+          # `terraform console` through stdin and hangs forever with it on.
+          terraform_wrapper: false
 
       - name: Run render harness
         run: python3 scripts/render_harness.py

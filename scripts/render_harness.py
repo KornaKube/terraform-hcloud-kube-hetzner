@@ -351,15 +351,25 @@ class TerraformScratch:
         env = os.environ.copy()
         env["TF_IN_AUTOMATION"] = "1"
         env["TF_CLI_ARGS"] = "-no-color"
-        result = subprocess.run(
-            ["terraform", "console"],
-            cwd=self.root,
-            input=f"{expression}\n",
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-        )
+        try:
+            result = subprocess.run(
+                ["terraform", "console"],
+                cwd=self.root,
+                input=f"{expression}\n",
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HarnessFailure(
+                "FAIL terraform-console: timed out after 300s waiting for output. "
+                "terraform console reads the expression from stdin; wrappers that "
+                "do not forward stdin (e.g. hashicorp/setup-terraform with "
+                "terraform_wrapper enabled) hang here forever.\n"
+                f"expression: {expression}"
+            ) from exc
         stdout = strip_ansi(result.stdout).strip()
         stderr = strip_ansi(result.stderr).strip()
         if result.returncode != 0:
