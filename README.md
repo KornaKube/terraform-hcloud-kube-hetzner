@@ -15,224 +15,44 @@ A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k
 [![OpenTofu](https://img.shields.io/badge/OpenTofu-Compatible-FFDA18?style=flat-square&logo=opentofu)](https://opentofu.org)&nbsp;&nbsp;
 [![HCloud Provider](https://img.shields.io/badge/hcloud-%3E%3D1.62.0-00ADEF?style=flat-square)](https://registry.terraform.io/providers/hetznercloud/hcloud/latest)&nbsp;&nbsp;
 [![K3s](https://img.shields.io/badge/K3s-v1.35-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)&nbsp;&nbsp;
+[![Docs](https://img.shields.io/badge/Docs-index-2F80ED?style=flat-square)](#documentation-index)&nbsp;&nbsp;
+[![v2 to v3 migration](https://img.shields.io/badge/v2%20%E2%86%92%20v3-migration-2EA44F?style=flat-square)](MIGRATION.md)&nbsp;&nbsp;
 [![License](https://img.shields.io/github/license/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&color=blue)](LICENSE)&nbsp;&nbsp;
 [![GitHub Stars](https://img.shields.io/github/stars/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&logo=github)](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/stargazers)
 
----
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-**💖 Love this project?**<br>
-<a href="https://github.com/sponsors/mysticaltech">Become a sponsor</a> to help fund<br>maintenance and new features!
-
-</td>
-<td width="50%" valign="top">
-
-**🤖 KH Assistant**<br>
-<a href="https://chatgpt.com/g/g-67df95cd1e0c8191baedfa3179061581-kh-assistant">Custom GPT</a> or <code>/kh-assistant</code> <a href="https://github.com/mysticaltech/terraform-hcloud-kube-hetzner/tree/master/.claude/skills/kh-assistant">skill</a><br>
-AI-powered config generation & debugging!
-
-</td>
-</tr>
-</table>
-
----
-
-[Getting Started](#-getting-started) •
-[Features](#-features) •
-[Usage](#-usage) •
-[Examples](#-examples) •
-[Contributing](#-contributing)
-
 </div>
 
 ---
 
-## 📖 About The Project
+## ✨ Highlights
 
-[Hetzner Cloud](https://hetzner.com) offers exceptional value with data centers across Europe and the US. This project creates a **highly optimized Kubernetes installation** that's easy to maintain, secure, and automatically upgrades both nodes and Kubernetes—functionality similar to GKE's Auto-Pilot.
-
-> *We are not Hetzner affiliates, but we strive to be the optimal solution for deploying Kubernetes on their platform.*
-
-Built on the shoulders of giants:
-- **[openSUSE Leap Micro](https://en.opensuse.org/Portal:LeapMicro)** — Stable, immutable container OS with transactional updates
-- **[openSUSE MicroOS](https://en.opensuse.org/Portal:MicroOS)** — Rolling, immutable container OS (legacy/upgrade support)
-- **[k3s](https://k3s.io/)** — Certified, lightweight Kubernetes distribution
-
-<div align="center">
-<img src="https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/raw/master/.images/kubectl-pod-all-17022022.png" alt="Kube-Hetzner Screenshot" width="700">
-</div>
-
-### Why Leap Micro over Ubuntu?
-
-| Feature | Benefit |
-|---------|---------|
-| **Immutable filesystem** | Most of the OS is read-only—hardened by design |
-| **Transactional updates** | Atomic upgrades with rollback |
-| **Stable release cadence** | Predictable base OS for production |
-| **BTRFS snapshots** | Automatic rollback if updates break something |
-| **[Kured](https://github.com/kubereboot/kured) support** | Safe, HA-aware node reboots |
-
-> MicroOS remains supported for upgrades/legacy nodes. If you want MicroOS for a new nodepool, set `os = "microos"` explicitly.
-
-### Why k3s?
-
-| Feature | Benefit |
-|---------|---------|
-| **Certified Kubernetes** | Automatically synced with upstream k8s |
-| **Single binary** | Deploy with one command |
-| **Batteries included** | Built-in [helm-controller](https://github.com/k3s-io/helm-controller) |
-| **Easy upgrades** | Via [system-upgrade-controller](https://github.com/rancher/system-upgrade-controller) |
+- **Production-ready Kubernetes on Hetzner Cloud:** highly optimized, easy to maintain, secure, and automatically upgrades both nodes and Kubernetes.
+- **k3s default, RKE2 supported:** k3s is the lightweight default; RKE2 is a first-class Kubernetes distribution choice in this module.
+- **HA and autoscaling:** odd control-plane quorum, static agent pools, Cluster Autoscaler nodepools, and the exhaustive `kube.tf.example` showcase are documented together.
+- **Private networking and NAT:** Hetzner private networking, private control-plane load balancers, NAT router patterns, and narrowed SSH/API firewall sources are supported.
+- **Leap Micro first:** new nodes default to openSUSE Leap Micro; MicroOS remains supported for upgrades/legacy nodes.
+- **Upgrade automation:** Kured handles HA-aware OS reboots; system-upgrade-controller manages k3s upgrades.
+- **Evidence-backed releases:** v3 release gates include live Hetzner apply, upgrade, health, NAT, autoscaler, RKE2, and destroy evidence in [`docs/v3-release-evidence.md`](docs/v3-release-evidence.md).
 
 ---
 
-## 🔄 Upgrading
+## 📚 Table of Contents
 
-Upgrading from `v2.x` to `v3.x`?
-
-Review the operator playbook in
-[`docs/v2-to-v3-migration.md`](docs/v2-to-v3-migration.md) and the variable map
-in [`MIGRATION.md`](MIGRATION.md) first. From a local kube-hetzner checkout,
-audit the Terraform root, then run:
-
-```bash
-uv run python /path/to/kube-hetzner/scripts/v2_to_v3_migration_assistant.py --root .
-terraform init -upgrade
-terraform plan
-```
-
-Only apply after reviewing all planned resource actions.
-
-### v3 Support Levels
-
-| Area | Support level | Notes |
-| --- | --- | --- |
-| k3s on Leap Micro | Stable default | Recommended path for new clusters. |
-| RKE2 on Leap Micro | Supported | Heavier distribution; basic RKE2 preset covered by CI, advanced RKE2 combinations validated manually per release. |
-| MicroOS | Legacy/upgrade support | Existing clusters remain supported; new nodepools default to Leap Micro. |
-| OpenTofu | Supported | Validate with `tofu init`, `tofu validate`, and `tofu plan` before applying. |
-| Addon version defaults | Reviewed deterministic defaults | Unset addon version variables use the module's reviewed version matrix; set `latest` only when you intentionally want upstream latest behavior. |
-| Cilium dual-stack | Supported | Preferred advanced CNI path. |
-| Cilium Gateway API | Supported opt-in | `cilium_gateway_api_enabled = true` installs standard Gateway API CRDs and enables Cilium Gateway API. Requires Cilium with kube-proxy replacement. |
-| Tailscale node transport | Static/plan validated; live E2E pending | `node_transport_mode = "tailscale"` has static validation and plan-matrix coverage; recommended for evaluation, not yet certified for production topologies. |
-| Embedded registry mirror | Supported opt-in | Enables k3s/RKE2's embedded Spegel mirror for trusted larger clusters. |
-| Cilium multinetwork public overlay | Experimental preview | Gated by `enable_experimental_cilium_public_overlay`; not production-supported until live datapath validation passes. |
-| Flannel multinetwork scale over Hetzner Networks | Static/plan validated through Tailscale transport; live E2E pending | Flannel is the first supported CNI for `node_transport_mode = "tailscale"`; Cilium multinetwork remains the separate experimental public-overlay preview until live datapath coverage promotes it. |
-| Cloudflare Zero Trust Access/Tunnel | Documented external access pattern | Use user-managed Cloudflare Access/Tunnel for operator, SSH, Rancher, or ingress access. kube-hetzner does not manage Cloudflare resources or support Cloudflare Mesh/WARP as node transport in v3. |
-| User-owned Tailscale/ZeroTier/WireGuard/WARP access | Supported external pattern | Use generic hooks when you only want Terraform/operator access and do not want kube-hetzner to manage node transport. |
-| Robot/vSwitch coupling | Advanced/special-case | Prefer blue/green migration and review route exposure carefully. |
-
-### Which Topology Should I Use?
-
-| Need | Recommended v3 topology |
-| --- | --- |
-| Small dev cluster | Single control plane, one agent pool, no ingress unless needed. |
-| Normal HA | 3 control planes, 2+ agents, one primary Hetzner Network, public API LB restricted to your source CIDRs or an explicit secure endpoint. |
-| Private-only | `nat_router` plus private control-plane LB on the primary Network. |
-| Secure operator/API access | `node_transport_mode = "tailscale"` with public API/SSH firewall sources closed. |
-| Cloudflare-protected operator/app access | Keep Tailscale or Hetzner private transport underneath; put user-managed Cloudflare Access/Tunnel in front of kube API, SSH, Rancher, or ingress endpoints. |
-| More than 100 Cloud nodes | Tailscale node transport plus `network_scope = "external"` shards, one Hetzner Network per 100-node budget. |
-| Very large reference | Autoscaler-first Tailscale multinetwork; see the 200-node and 10k-node examples. |
-| Cilium Gateway API | Cilium, `enable_kube_proxy = false`, `cilium_gateway_api_enabled = true`. |
-| Heavy image-pull pressure | `embedded_registry_mirror.enabled = true` on trusted clusters. |
-
-Full guide: [`docs/v3-topology-recommendations.md`](docs/v3-topology-recommendations.md).
-
-Public node join endpoints require a real public API host: either
-`control_plane_endpoint`, a public control-plane load balancer, or public
-IPv4/IPv6 on the control-plane nodes. IPv6-only public joins are valid; private
-control planes without one of those hosts are rejected during validation.
-
-### v3 Readiness Checklist
-
-Before applying a v3 upgrade, confirm:
-
-- Current state is backed up with `terraform state pull`.
-- Removed v2 inputs are gone and renamed booleans with inverted meaning are reviewed.
-- Addon version policy is reviewed: unset addon version variables use deterministic module defaults, while `latest` opts back into upstream floating behavior.
-- In-place v2 upgrades keep the default `network_subnet_mode = "per_nodepool"` unless subnet resource changes are intentional.
-- `terraform validate` or `tofu validate` passes before planning.
-- `terraform plan` has no unexpected `delete`, `replace`, or `forces replacement` actions.
-- Network, subnet, load balancer, NAT router, placement group, server, and volume changes are intentional.
-- Private-only, Robot/vSwitch, external-network, Tailscale/overlay, Longhorn, and autoscaler clusters have a rollback or blue/green plan.
+- [Highlights](#-highlights)
+- [Quickstart](#-quickstart)
+- [Upgrading & Migration](#-upgrading--migration)
+- [Features & Support Matrix](#-features--support-matrix)
+- [Configuration & Documentation](#-configuration--documentation)
+- [Project Background](#-project-background)
+- [Usage & Operations](#-usage--operations)
+- [Examples & Recipes](#-examples--recipes)
+- [Debugging](#-debugging)
+- [Takedown](#-takedown)
+- [Contributing & Community](#-contributing--community)
 
 ---
 
-## ✨ Features
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 🚀 Core Platform
-- [x] **Maintenance-free** — Auto-upgrades OS & k3s with rollback
-- [x] **Multi-architecture** — Mix x86 and ARM (CAX) for cost savings
-- [x] **Private networking** — Secure, low-latency node communication
-- [x] **SELinux hardened** — Pre-configured security policies
-
-### 🌐 Networking & CNI
-- [x] **CNI flexibility** — Flannel, Calico, or Cilium
-- [x] **Cilium XDP** — Hardware-level load balancing
-- [x] **Cilium Gateway API** — Native Gateway API controller support
-- [x] **WireGuard encryption** — Optional encrypted overlay
-- [x] **Dual-stack** — Full IPv4 & IPv6 support
-- [x] **Custom subnets** — Define CIDR blocks per nodepool
-- [ ] **Cilium multinetwork scale** — Experimental public-overlay preview, not production-supported yet
-
-### ⚖️ Load Balancing
-- [x] **Ingress controllers** — Traefik, Nginx, or HAProxy
-- [x] **Proxy Protocol** — Preserve client IPs
-- [x] **Flexible LB** — Hetzner LB or Klipper
-
-</td>
-<td width="50%" valign="top">
-
-### 🔄 High Availability
-- [x] **HA showcase topology** — `kube.tf.example` defines 3 control-plane pools + 6 active static agent pools (7 agent nodes)
-- [x] **Super-HA** — Span multiple Hetzner locations
-- [x] **Cluster autoscaler** — Automatic node scaling
-- [x] **Embedded registry mirror** — Opt-in k3s/RKE2 Spegel mirror for trusted large clusters
-- [x] **Single-node mode** — Perfect for development
-
-### 💾 Storage
-- [x] **Hetzner CSI** — Native block storage with encryption
-- [x] **Longhorn** — Distributed storage with replication
-- [x] **Custom mount paths** — Configurable storage locations
-
-### 🔒 Security & Operations
-- [x] **Audit logging** — Configurable retention policies
-- [x] **Firewall rules** — Granular SSH/API access control
-- [x] **NAT router** — Fully private clusters
-- [x] **Plan-time validation** — Terraform/OpenTofu rejects invalid config combinations early
-- [x] **190+ variables** — Fine-tune everything
-- [x] **User kustomizations** — Ordered custom manifests with hooks
-
-</td>
-</tr>
-</table>
-
----
-
-## 🔐 Security
-
-### MicroOS / Leap Micro Hardening
-- **Immutable base OS:** Leap Micro and MicroOS use transactional updates and read-only system partitions by default, reducing host drift and limiting persistence for unauthorized changes.
-- **Reduced host surface:** Cluster nodes are treated as appliance-style Kubernetes hosts; operational changes should flow through Terraform and Kubernetes manifests rather than ad-hoc host mutation.
-- **SELinux integration:** The module includes SELinux handling for K3s/RKE2 bootstrap paths, with explicit controls and troubleshooting guidance for strict environments.
-
-### Network Isolation
-- **Default deny posture for cluster ingress:** Firewall rules are explicit and can be narrowed to trusted source ranges (`myipv4`/allowlists) for SSH and Kubernetes API exposure.
-- **Private cluster topology support:** You can run with private networking and NAT routing patterns to minimize directly exposed node interfaces.
-- **Load balancer boundary controls:** Control plane and ingress load balancer exposure can be restricted and combined with firewall source controls to reduce public attack surface.
-
-### RKE2 Security Posture
-- **CNCF-conformant distribution option:** RKE2 is supported as a first-class Kubernetes distribution choice in this module.
-- **Compliance-oriented operation:** RKE2 is designed for hardened, regulated environments and supports CIS-focused deployment patterns.
-- **Certification visibility:** For current security certifications/compliance mappings, reference the upstream RKE2 documentation and release notes as authoritative sources.
-
-## 🏁 Getting Started
+## 🚀 Quickstart
 
 ### Prerequisites
 
@@ -267,26 +87,9 @@ Before applying a v3 upgrade, confirm:
 
 OpenTofu is officially supported. Pull requests are validated in CI with both Terraform and OpenTofu, including real Hetzner preset apply/health/destroy tests when Hetzner E2E is enabled.
 
-### Plan-Time Validation
-
-Kube-Hetzner uses Terraform/OpenTofu validations as the module contract: self-contained input validation blocks plus the hard `terraform_data.validation_contract` precondition surface for cross-variable rules. Run `terraform plan` or `tofu plan` before every apply; invalid combinations fail before resources are created.
-
-The validation layer checks pure configuration invariants: non-empty tokens and SSH keys, supported regions and locations, CIDR syntax and IP-family pairs, nodepool name/count rules, odd control-plane quorum, Hetzner network/subnet/placement-group limits, multi-network join requirements, autoscaler boundaries, Cilium-only options, load balancer dependencies, firewall source formats, Robot/vSwitch/NAT requirements, audit settings, YAML snippets, and attached volume definitions.
-
-When validating the module itself with both CLIs in the same checkout, run OpenTofu in a temporary copy so its ignored lock file and plugin cache never disturb Terraform's local state:
-
-```bash
-tmpdir="$(mktemp -d)"
-rsync -a --exclude .git --exclude .terraform --exclude .terraform-tofu ./ "$tmpdir"/
-(cd "$tmpdir" && tofu init -backend=false -input=false && tofu validate -no-color)
-rm -rf "$tmpdir"
-```
-
-Provider/runtime assertions still belong in resource preconditions, postconditions, or checks. If an invariant can be decided from module inputs, it should be enforced at this plan-time validation layer.
-
 ---
 
-### ⚡ Quick Start
+### Quick Start
 
 <table>
 <tr>
@@ -383,116 +186,76 @@ tofu apply -auto-approve
 
 ---
 
-## 🔧 Usage
+## 🔄 Upgrading & Migration
 
-View cluster details:
-```sh
-terraform output kubeconfig
-terraform output -json kubeconfig | jq
+### v2 -> v3 migration
+
+For `v2.x` -> `v3.x`, start with [`MIGRATION.md`](MIGRATION.md), the contract/variable map, and [`docs/v2-to-v3-migration.md`](docs/v2-to-v3-migration.md), the guided walkthrough. The live release evidence includes a `v2.21.0` -> `v3` in-place upgrade with 0 destroy/replace of hcloud infrastructure for the standard path; read the guide before planning and apply only after every planned resource action is understood.
+
+From a local kube-hetzner checkout, audit the Terraform root, then run:
+
+```bash
+uv run python /path/to/kube-hetzner/scripts/v2_to_v3_migration_assistant.py --root .
+terraform init -upgrade
+terraform plan
 ```
 
-### Connect via SSH
+Only apply after reviewing all planned resource actions. Release-gate evidence is recorded in [`docs/v3-release-evidence.md`](docs/v3-release-evidence.md).
 
-```sh
-ssh root@<control-plane-ip> -i /path/to/private_key -o StrictHostKeyChecking=no
-```
+### v3 Readiness Checklist
 
-Restrict SSH access by configuring `firewall_ssh_source` in your kube.tf (default is `["myipv4"]`). For CI/CD runners, override it with your runner CIDRs. See [SSH docs](docs/ssh.md#firewall-ssh-source-and-changing-ips) for dynamic IP handling.
+Before applying a v3 upgrade, confirm:
 
-### Connect via Kube API
-
-```sh
-kubectl --kubeconfig clustername_kubeconfig.yaml get nodes
-```
-
-Or set it as your default:
-```sh
-export KUBECONFIG=/<path-to>/clustername_kubeconfig.yaml
-```
-
-> **Tip:** If `create_kubeconfig = false`, generate it manually: `terraform output --raw kubeconfig > clustername_kubeconfig.yaml`
+- Current state is backed up with `terraform state pull`.
+- Removed v2 inputs are gone and renamed booleans with inverted meaning are reviewed.
+- Addon version policy is reviewed: unset addon version variables use deterministic module defaults, while `latest` opts back into upstream floating behavior.
+- In-place v2 upgrades keep the default `network_subnet_mode = "per_nodepool"` unless subnet resource changes are intentional.
+- `terraform validate` or `tofu validate` passes before planning.
+- `terraform plan` has no unexpected `delete`, `replace`, or `forces replacement` actions.
+- Network, subnet, load balancer, NAT router, placement group, server, and volume changes are intentional.
+- Private-only, Robot/vSwitch, external-network, Tailscale/overlay, Longhorn, and autoscaler clusters have a rollback or blue/green plan.
 
 ---
 
-## 🌐 CNI Options
+### AI-assisted migration
 
-Default is **Flannel**. Switch by setting `cni_plugin` to `"calico"` or `"cilium"`.
+This repo ships [agent skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/` for Claude Code and compatible agents. `/migrate-v2-to-v3` guides an AI agent through the whole upgrade with protected-infrastructure plan gates; `/kh-assistant`, `/upgrade-cluster`, and `/debug-node` cover configuration/debugging, live upgrades, and rescue-mode node debugging. KH Assistant is also available as a [Custom GPT](https://chatgpt.com/g/g-67df95cd1e0c8191baedfa3179061581-kh-assistant) or as the `/kh-assistant` [skill](https://github.com/mysticaltech/terraform-hcloud-kube-hetzner/tree/master/.claude/skills/kh-assistant).
 
-### Cilium Configuration
+Usage sketch:
 
-Customize via `cilium_values` with [Cilium helm values](https://github.com/cilium/cilium/blob/master/install/kubernetes/cilium/values.yaml).
-
-| Feature | Variable |
-|---------|----------|
-| Full kube-proxy replacement | `enable_kube_proxy = false` |
-| Hubble observability | `cilium_hubble_enabled = true` |
-
-Access Hubble UI:
-```sh
-kubectl port-forward -n kube-system service/hubble-ui 12000:80
-# or with Cilium CLI:
-cilium hubble ui
+```text
+/migrate-v2-to-v3 <terraform-root>
+/upgrade-cluster <terraform-root>
+/debug-node
 ```
 
----
+| Skill | Purpose |
+|-------|---------|
+| `/migrate-v2-to-v3 <terraform-root>` | Guided v2 to v3 migration and plan review |
+| `/kh-assistant` | Interactive help for configuration and debugging |
+| `/upgrade-cluster <terraform-root>` | Safety-first workflow for live module and Kubernetes cluster upgrades |
+| `/debug-node` | Rescue-mode workflow for unreachable Hetzner nodes, SSH failures, cloud-init failures, or provisioning hangs |
+| `/review-pr <num>` | Security-focused PR review |
+| `/test-changes` | Run terraform fmt, validate, plan |
 
-## 📈 Scaling
+**PRs to improve these skills are welcome!** See `.claude/skills/` for the skill definitions.
 
-### Manual Scaling
+### In-major Kubernetes and OS upgrades
 
-Adjust `count` in any nodepool and run `terraform apply`. Constraints:
-
-- First control-plane nodepool minimum: **1**
-- Drain nodes before removing: `kubectl drain <node-name>`
-- Only remove nodepools from the **end** of the list
-- Rename nodepools only when count is **0**
-
-**Advanced:** Replace `count` with a `nodes` map for individual node control—see `kube.tf.example`.
-
-### Autoscaling
-
-Enable with `autoscaler_nodepools`. Powered by [Cluster Autoscaler](https://github.com/kubernetes/autoscaler).
-
-> ⚠️ Autoscaled nodes use a snapshot from the initial control plane. Ensure disk sizes match.
-> Longhorn storage should stay on static agent nodepools. Autoscaled Longhorn volumes require a write-capable Hetzner token in node user-data and leave detached volumes behind on scale-down.
-
-Cluster Autoscaler will not scale down nodes that run pods with local storage unless explicitly configured to do so. For disposable local data, add `--skip-nodes-with-local-storage=false` to `cluster_autoscaler_extra_args` or annotate individual pods with `cluster-autoscaler.kubernetes.io/safe-to-evict: "true"`.
-
----
-
-## 🛡️ High Availability
-
-The example `kube.tf.example` is an exhaustive showcase: **3 control-plane pools
-(3 nodes) + 6 active static agent pools (7 agent nodes)** with automatic
-upgrades. For a minimal start, trim any control-plane or agent pools and feature
-examples you do not need before first apply.
-
-| Control Planes | Recommendation |
-|----------------|----------------|
-| 3+ (odd numbers) | Full HA with quorum maintenance |
-| 2 | Disable auto OS upgrades, manual maintenance |
-| 1 | Development only, disable auto upgrades |
-
-See [Rancher's HA documentation](https://rancher.com/docs/k3s/latest/en/installation/ha-embedded/).
-
----
-
-## 🔄 Automatic Upgrades
-
-### OS Upgrades (Leap Micro / MicroOS)
+#### OS Upgrades (Leap Micro / MicroOS)
 
 Handled by [Kured](https://github.com/kubereboot/kured)—safe, HA-aware reboots. Configure timeframes via [Kured options](https://kured.dev/docs/configuration/).
 Set `enable_kured = false` only when reboot orchestration is managed externally;
 `automatically_upgrade_os` controls the host update timer, not Kured deployment.
 
-### K3s Upgrades
+#### K3s Upgrades
 
 Managed by [system-upgrade-controller](https://github.com/rancher/system-upgrade-controller). Customize the [upgrade plan template](templates/plans.yaml.tpl).
 Set `enable_system_upgrade_controller = false` only when the controller and plans
 are managed externally; `automatically_upgrade_kubernetes` controls upgrade
 activity, not system-upgrade-controller deployment.
 
-### Disable Automatic Upgrades
+#### Disable Automatic Upgrades
 
 ```tf
 # Disable OS upgrades (required for <3 control planes)
@@ -526,7 +289,7 @@ reboot
 ```
 </details>
 
-### Component Upgrades
+#### Component Upgrades
 
 Use the `kustomization_backup.yaml` file created during installation:
 
@@ -536,22 +299,312 @@ Use the `kustomization_backup.yaml` file created during installation:
 
 ---
 
-## ⚙️ Customization
+### Module version upgrades
 
-Most components use [Helm Chart](https://rancher.com/docs/k3s/latest/en/helm/) definitions via k3s Helm Controller.
+Update `version` in your kube.tf and run `terraform apply`.
 
-See `kube.tf.example` for the exhaustive showcase; trim unused pools and feature
-blocks for a minimal start.
+#### Migrating from 1.x to 2.x
+
+1. Run `createkh` to get new packer template
+2. Update version to `>= 2.0`
+3. Remove `extra_packages_to_install` and `opensuse_microos_mirror_link` (moved to packer)
+4. Run `terraform init -upgrade && terraform apply`
 
 ---
 
-## 🖥️ Dedicated Servers
+## ✅ Features & Support Matrix
+
+### Feature Highlights
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🚀 Core Platform
+- [x] **Maintenance-free** — Auto-upgrades OS & k3s with rollback
+- [x] **Multi-architecture** — Mix x86 and ARM (CAX) for cost savings
+- [x] **Private networking** — Secure, low-latency node communication
+- [x] **SELinux hardened** — Pre-configured security policies
+
+### 🌐 Networking & CNI
+- [x] **CNI flexibility** — Flannel, Calico, or Cilium
+- [x] **Cilium XDP** — Hardware-level load balancing
+- [x] **Cilium Gateway API** — Native Gateway API controller support
+- [x] **WireGuard encryption** — Optional encrypted overlay
+- [x] **Dual-stack** — Full IPv4 & IPv6 support
+- [x] **Custom subnets** — Define CIDR blocks per nodepool
+- [ ] **Cilium multinetwork scale** — Experimental public-overlay preview, not production-supported yet
+
+### ⚖️ Load Balancing
+- [x] **Ingress controllers** — Traefik, Nginx, or HAProxy
+- [x] **Proxy Protocol** — Preserve client IPs
+- [x] **Flexible LB** — Hetzner LB or Klipper
+
+</td>
+<td width="50%" valign="top">
+
+### 🔄 High Availability
+- [x] **HA showcase topology** — `kube.tf.example` defines 3 control-plane pools + 6 active static agent pools (7 agent nodes)
+- [x] **Super-HA** — Span multiple Hetzner locations
+- [x] **Cluster autoscaler** — Automatic node scaling
+- [x] **Embedded registry mirror** — Opt-in k3s/RKE2 Spegel mirror for trusted large clusters
+- [x] **Single-node mode** — Perfect for development
+
+### 💾 Storage
+- [x] **Hetzner CSI** — Native block storage with encryption
+- [x] **Longhorn** — Distributed storage with replication
+- [x] **Custom mount paths** — Configurable storage locations
+
+### 🔒 Security & Operations
+- [x] **Audit logging** — Configurable retention policies
+- [x] **Firewall rules** — Granular SSH/API access control
+- [x] **NAT router** — Fully private clusters
+- [x] **Plan-time validation** — Terraform/OpenTofu rejects invalid config combinations early
+- [x] **190+ variables** — Fine-tune everything
+- [x] **User kustomizations** — Ordered custom manifests with hooks
+
+</td>
+</tr>
+</table>
+
+---
+
+### v3 Support Levels
+| Area | Support level | Notes |
+| --- | --- | --- |
+| k3s on Leap Micro | Stable default | Recommended path for new clusters. |
+| RKE2 on Leap Micro | Supported | Heavier distribution; basic RKE2 preset covered by CI, advanced RKE2 combinations validated manually per release. |
+| MicroOS | Legacy/upgrade support | Existing clusters remain supported; new nodepools default to Leap Micro. |
+| OpenTofu | Supported | Validate with `tofu init`, `tofu validate`, and `tofu plan` before applying. |
+| Addon version defaults | Reviewed deterministic defaults | Unset addon version variables use the module's reviewed version matrix; set `latest` only when you intentionally want upstream latest behavior. |
+| Cilium dual-stack | Supported | Preferred advanced CNI path. |
+| Cilium Gateway API | Supported opt-in | `cilium_gateway_api_enabled = true` installs standard Gateway API CRDs and enables Cilium Gateway API. Requires Cilium with kube-proxy replacement. |
+| Tailscale node transport | Static/plan validated; live E2E pending | `node_transport_mode = "tailscale"` has static validation and plan-matrix coverage; recommended for evaluation, not yet certified for production topologies. |
+| Embedded registry mirror | Supported opt-in | Enables k3s/RKE2's embedded Spegel mirror for trusted larger clusters. |
+| Cilium multinetwork public overlay | Experimental preview | Gated by `enable_experimental_cilium_public_overlay`; not production-supported until live datapath validation passes. |
+| Flannel multinetwork scale over Hetzner Networks | Static/plan validated through Tailscale transport; live E2E pending | Flannel is the first supported CNI for `node_transport_mode = "tailscale"`; Cilium multinetwork remains the separate experimental public-overlay preview until live datapath coverage promotes it. |
+| Cloudflare Zero Trust Access/Tunnel | Documented external access pattern | Use user-managed Cloudflare Access/Tunnel for operator, SSH, Rancher, or ingress access. kube-hetzner does not manage Cloudflare resources or support Cloudflare Mesh/WARP as node transport in v3. |
+| User-owned Tailscale/ZeroTier/WireGuard/WARP access | Supported external pattern | Use generic hooks when you only want Terraform/operator access and do not want kube-hetzner to manage node transport. |
+| Robot/vSwitch coupling | Advanced/special-case | Prefer blue/green migration and review route exposure carefully. |
+
+### Which Topology Should I Use?
+| Need | Recommended v3 topology |
+| --- | --- |
+| Small dev cluster | Single control plane, one agent pool, no ingress unless needed. |
+| Normal HA | 3 control planes, 2+ agents, one primary Hetzner Network, public API LB restricted to your source CIDRs or an explicit secure endpoint. |
+| Private-only | `nat_router` plus private control-plane LB on the primary Network. |
+| Secure operator/API access | `node_transport_mode = "tailscale"` with public API/SSH firewall sources closed. |
+| Cloudflare-protected operator/app access | Keep Tailscale or Hetzner private transport underneath; put user-managed Cloudflare Access/Tunnel in front of kube API, SSH, Rancher, or ingress endpoints. |
+| More than 100 Cloud nodes | Tailscale node transport plus `network_scope = "external"` shards, one Hetzner Network per 100-node budget. |
+| Very large reference | Autoscaler-first Tailscale multinetwork; see the 200-node and 10k-node examples. |
+| Cilium Gateway API | Cilium, `enable_kube_proxy = false`, `cilium_gateway_api_enabled = true`. |
+| Heavy image-pull pressure | `embedded_registry_mirror.enabled = true` on trusted clusters. |
+
+Full guide: [`docs/v3-topology-recommendations.md`](docs/v3-topology-recommendations.md).
+
+Public node join endpoints require a real public API host: either
+`control_plane_endpoint`, a public control-plane load balancer, or public
+IPv4/IPv6 on the control-plane nodes. IPv6-only public joins are valid; private
+control planes without one of those hosts are rejected during validation.
+
+---
+
+## ⚙️ Configuration & Documentation
+
+### Configuration overview
+
+Reference configuration starts in [`kube.tf.example`](kube.tf.example). It is the exhaustive showcase called out in the Quickstart, so trim unused pools and feature examples before first apply.
+
+Most components use [Helm Chart](https://rancher.com/docs/k3s/latest/en/helm/) definitions via k3s Helm Controller.
+
+---
+
+### Plan-Time Validation
+Kube-Hetzner uses Terraform/OpenTofu validations as the module contract: self-contained input validation blocks plus the hard `terraform_data.validation_contract` precondition surface for cross-variable rules. Run `terraform plan` or `tofu plan` before every apply; invalid combinations fail before resources are created.
+
+The validation layer checks pure configuration invariants: non-empty tokens and SSH keys, supported regions and locations, CIDR syntax and IP-family pairs, nodepool name/count rules, odd control-plane quorum, Hetzner network/subnet/placement-group limits, multi-network join requirements, autoscaler boundaries, Cilium-only options, load balancer dependencies, firewall source formats, Robot/vSwitch/NAT requirements, audit settings, YAML snippets, and attached volume definitions.
+
+When validating the module itself with both CLIs in the same checkout, run OpenTofu in a temporary copy so its ignored lock file and plugin cache never disturb Terraform's local state:
+
+```bash
+tmpdir="$(mktemp -d)"
+rsync -a --exclude .git --exclude .terraform --exclude .terraform-tofu ./ "$tmpdir"/
+(cd "$tmpdir" && tofu init -backend=false -input=false && tofu validate -no-color)
+rm -rf "$tmpdir"
+```
+
+Provider/runtime assertions still belong in resource preconditions, postconditions, or checks. If an invariant can be decided from module inputs, it should be enforced at this plan-time validation layer.
+
+---
+
+### Documentation Index
+
+| Resource | Purpose |
+| --- | --- |
+| [`docs/llms.md`](docs/llms.md) | Comprehensive variable and topology reference for assistants and operators. |
+| [`docs/terraform.md`](docs/terraform.md) | Generated Terraform/OpenTofu inputs, outputs, resources, and providers. |
+| [`docs/ssh.md`](docs/ssh.md) | SSH keys, firewall sources, dynamic IP handling, and connection behavior. |
+| [`docs/private-network-egress.md`](docs/private-network-egress.md) | NAT router setup and private-network egress patterns. |
+| [`docs/add-robot-server.md`](docs/add-robot-server.md) | Hetzner Robot dedicated server integration. |
+| [`docs/v3-release-evidence.md`](docs/v3-release-evidence.md) | Live v3 release evidence matrix and known gaps. |
+| [`site-docs/index.md`](site-docs/index.md) and [`site-docs/configuration.md`](site-docs/configuration.md) | Lightweight generated site docs from `README.md` and `kube.tf.example`. |
+| [`docs/v3-topology-recommendations.md`](docs/v3-topology-recommendations.md) | v3 topology chooser for dev, HA, private-only, Tailscale, Cloudflare, multinetwork, Gateway API, Robot/vSwitch, and registry mirror patterns. |
+
+---
+
+## 🧭 Project Background
+
+[Hetzner Cloud](https://hetzner.com) offers exceptional value with data centers across Europe and the US. This project creates a **highly optimized Kubernetes installation** that's easy to maintain, secure, and automatically upgrades both nodes and Kubernetes—functionality similar to GKE's Auto-Pilot.
+
+> *We are not Hetzner affiliates, but we strive to be the optimal solution for deploying Kubernetes on their platform.*
+
+Built on the shoulders of giants:
+- **[openSUSE Leap Micro](https://en.opensuse.org/Portal:LeapMicro)** — Stable, immutable container OS with transactional updates
+- **[openSUSE MicroOS](https://en.opensuse.org/Portal:MicroOS)** — Rolling, immutable container OS (legacy/upgrade support)
+- **[k3s](https://k3s.io/)** — Certified, lightweight Kubernetes distribution
+
+<div align="center">
+<img src="https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/raw/master/.images/kubectl-pod-all-17022022.png" alt="Kube-Hetzner Screenshot" width="700">
+</div>
+
+### Why Leap Micro over Ubuntu?
+
+| Feature | Benefit |
+|---------|---------|
+| **Immutable filesystem** | Most of the OS is read-only—hardened by design |
+| **Transactional updates** | Atomic upgrades with rollback |
+| **Stable release cadence** | Predictable base OS for production |
+| **BTRFS snapshots** | Automatic rollback if updates break something |
+| **[Kured](https://github.com/kubereboot/kured) support** | Safe, HA-aware node reboots |
+
+> MicroOS remains supported for upgrades/legacy nodes. If you want MicroOS for a new nodepool, set `os = "microos"` explicitly.
+
+### Why k3s?
+
+| Feature | Benefit |
+|---------|---------|
+| **Certified Kubernetes** | Automatically synced with upstream k8s |
+| **Single binary** | Deploy with one command |
+| **Batteries included** | Built-in [helm-controller](https://github.com/k3s-io/helm-controller) |
+| **Easy upgrades** | Via [system-upgrade-controller](https://github.com/rancher/system-upgrade-controller) |
+
+---
+
+## 🧰 Usage & Operations
+
+### Security
+
+#### MicroOS / Leap Micro Hardening
+- **Immutable base OS:** Leap Micro and MicroOS use transactional updates and read-only system partitions by default, reducing host drift and limiting persistence for unauthorized changes.
+- **Reduced host surface:** Cluster nodes are treated as appliance-style Kubernetes hosts; operational changes should flow through Terraform and Kubernetes manifests rather than ad-hoc host mutation.
+- **SELinux integration:** The module includes SELinux handling for K3s/RKE2 bootstrap paths, with explicit controls and troubleshooting guidance for strict environments.
+
+#### Network Isolation
+- **Default deny posture for cluster ingress:** Firewall rules are explicit and can be narrowed to trusted source ranges (`myipv4`/allowlists) for SSH and Kubernetes API exposure.
+- **Private cluster topology support:** You can run with private networking and NAT routing patterns to minimize directly exposed node interfaces.
+- **Load balancer boundary controls:** Control plane and ingress load balancer exposure can be restricted and combined with firewall source controls to reduce public attack surface.
+
+#### RKE2 Security Posture
+- **CNCF-conformant distribution option:** RKE2 is supported as a first-class Kubernetes distribution choice in this module.
+- **Compliance-oriented operation:** RKE2 is designed for hardened, regulated environments and supports CIS-focused deployment patterns.
+- **Certification visibility:** For current security certifications/compliance mappings, reference the upstream RKE2 documentation and release notes as authoritative sources.
+
+### Connecting to the cluster
+
+View cluster details:
+```sh
+terraform output kubeconfig
+terraform output -json kubeconfig | jq
+```
+
+#### Connect via SSH
+
+```sh
+ssh root@<control-plane-ip> -i /path/to/private_key -o StrictHostKeyChecking=no
+```
+
+Restrict SSH access by configuring `firewall_ssh_source` in your kube.tf (default is `["myipv4"]`). For CI/CD runners, override it with your runner CIDRs. See [SSH docs](docs/ssh.md#firewall-ssh-source-and-changing-ips) for dynamic IP handling.
+
+#### Connect via Kube API
+
+```sh
+kubectl --kubeconfig clustername_kubeconfig.yaml get nodes
+```
+
+Or set it as your default:
+```sh
+export KUBECONFIG=/<path-to>/clustername_kubeconfig.yaml
+```
+
+> **Tip:** If `create_kubeconfig = false`, generate it manually: `terraform output --raw kubeconfig > clustername_kubeconfig.yaml`
+
+---
+
+### CNI Options
+
+Default is **Flannel**. Switch by setting `cni_plugin` to `"calico"` or `"cilium"`.
+
+#### Cilium Configuration
+
+Customize via `cilium_values` with [Cilium helm values](https://github.com/cilium/cilium/blob/master/install/kubernetes/cilium/values.yaml).
+
+| Feature | Variable |
+|---------|----------|
+| Full kube-proxy replacement | `enable_kube_proxy = false` |
+| Hubble observability | `cilium_hubble_enabled = true` |
+
+Access Hubble UI:
+```sh
+kubectl port-forward -n kube-system service/hubble-ui 12000:80
+# or with Cilium CLI:
+cilium hubble ui
+```
+
+---
+
+### Scaling
+
+#### Manual Scaling
+
+Adjust `count` in any nodepool and run `terraform apply`. Constraints:
+
+- First control-plane nodepool minimum: **1**
+- Drain nodes before removing: `kubectl drain <node-name>`
+- Only remove nodepools from the **end** of the list
+- Rename nodepools only when count is **0**
+
+**Advanced:** Replace `count` with a `nodes` map for individual node control—see `kube.tf.example`.
+
+#### Autoscaling
+
+Enable with `autoscaler_nodepools`. Powered by [Cluster Autoscaler](https://github.com/kubernetes/autoscaler).
+
+> ⚠️ Autoscaled nodes use a snapshot from the initial control plane. Ensure disk sizes match.
+> Longhorn storage should stay on static agent nodepools. Autoscaled Longhorn volumes require a write-capable Hetzner token in node user-data and leave detached volumes behind on scale-down.
+
+Cluster Autoscaler will not scale down nodes that run pods with local storage unless explicitly configured to do so. For disposable local data, add `--skip-nodes-with-local-storage=false` to `cluster_autoscaler_extra_args` or annotate individual pods with `cluster-autoscaler.kubernetes.io/safe-to-evict: "true"`.
+
+---
+
+### High Availability
+
+| Control Planes | Recommendation |
+|----------------|----------------|
+| 3+ (odd numbers) | Full HA with quorum maintenance |
+| 2 | Disable auto OS upgrades, manual maintenance |
+| 1 | Development only, disable auto upgrades |
+
+See [Rancher's HA documentation](https://rancher.com/docs/k3s/latest/en/installation/ha-embedded/).
+
+---
+
+### Dedicated Servers
 
 Integrate Hetzner Robot servers via [the dedicated server guide](docs/add-robot-server.md).
 
 ---
 
-## ➕ Adding Extras
+### Adding Extras
 
 Use [Kustomize](https://kustomize.io) for additional deployments:
 
@@ -562,7 +615,7 @@ Use [Kustomize](https://kustomize.io) for additional deployments:
 
 ---
 
-## 📚 Examples
+## 📚 Examples & Recipes
 
 Repository examples:
 
@@ -1710,20 +1763,9 @@ tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubuserconte
 
 ---
 
-## ⬆️ Upgrading the Module
+## 🤝 Contributing & Community
 
-Update `version` in your kube.tf and run `terraform apply`.
-
-### Migrating from 1.x to 2.x
-
-1. Run `createkh` to get new packer template
-2. Update version to `>= 2.0`
-3. Remove `extra_packages_to_install` and `opensuse_microos_mirror_link` (moved to packer)
-4. Run `terraform init -upgrade && terraform apply`
-
----
-
-## 🤝 Contributing
+### Contributing
 
 **Help wanted!** Consider asking Hetzner to add MicroOS as a default image (not just ISO) at [get.opensuse.org/microos](https://get.opensuse.org/microos). More requests = faster deployments for everyone!
 
@@ -1744,24 +1786,7 @@ Update `version` in your kube.tf and run `terraform apply`.
 7. Push: `git push origin AmazingFeature`
 8. Open PR targeting `staging` branch
 
-### Agent Skills
-
-This project includes [agent skills](https://agentskills.io) in `.claude/skills/` — reusable workflows for any AI coding agent (Claude Code, Cursor, Windsurf, Codex, etc.):
-
-| Skill | Purpose |
-|-------|---------|
-| `/kh-assistant` | Interactive help for configuration and debugging |
-| `/fix-issue <num>` | Guided workflow for fixing GitHub issues |
-| `/review-pr <num>` | Security-focused PR review |
-| `/test-changes` | Run terraform fmt, validate, plan |
-| `/migrate-v2-to-v3 <terraform-root>` | Guided v2 to v3 migration and plan review |
-| `/upgrade-cluster <terraform-root>` | Safety-first workflow for live module and Kubernetes cluster upgrades |
-
-**PRs to improve these skills are welcome!** See `.claude/skills/` for the skill definitions.
-
----
-
-## 💖 Support This Project
+### Support This Project
 
 <div align="center">
 
@@ -1786,7 +1811,7 @@ Your sponsorship directly funds:
 
 ---
 
-## 🙏 Acknowledgements
+### Acknowledgements
 
 - **[k-andy](https://github.com/StarpTech/k-andy)** — The starting point for this project
 - **[Best-README-Template](https://github.com/othneildrew/Best-README-Template)** — README inspiration
@@ -1801,6 +1826,11 @@ Your sponsorship directly funds:
 </div>
 
 Thanks to **[Hetzner](https://www.hetzner.com)** for supporting this project with cloud credits.
+
+
+### License
+
+Released under the license in [`LICENSE`](LICENSE).
 
 ---
 
