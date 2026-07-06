@@ -1752,11 +1752,13 @@ kubectl get pods -l app=<label> -o wide
 
 ## 💣 Takedown
 
+The recommended teardown path is `scripts/destroy.sh`: it runs `terraform`/`tofu destroy` with any extra args you pass, auto-retries the known benign ingress LB detach race documented in `plans/011`, and then prints a read-only hcloud orphan report. If state is already wrecked or resources are stuck outside Terraform, use `scripts/cleanup.sh` as the forceful fallback; it keeps a dry-run prompt by default.
+
 ```sh
-terraform destroy -auto-approve
+tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/destroy.sh && chmod +x "${tmp_script}" && "${tmp_script}" && rm "${tmp_script}"
 ```
 
-**If destroy hangs** (LB or autoscaled nodes), use the cleanup script:
+Forceful cleanup fallback:
 
 ```sh
 tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/cleanup.sh && chmod +x "${tmp_script}" && "${tmp_script}" && rm "${tmp_script}"
