@@ -1,7 +1,9 @@
 # Hetzner Test Presets
 
-These `.tfvars` files are used by `.github/workflows/hetzner-test.yaml` to run a
-matrix of real deployment tests with both Terraform and OpenTofu.
+These `.tfvars` files, together with `ci-kube.tf`, define reproducible real
+deployment test scenarios (Terraform and OpenTofu). Run them manually from a
+scratch directory against a test Hetzner project when validating changes;
+tear down with `scripts/destroy.sh`.
 
 - `default.tfvars`: baseline defaults
 - `nginx_ingress.tfvars`: deploy with NGINX ingress controller

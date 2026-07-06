@@ -2040,7 +2040,7 @@ done
 # terraform's own hcloud_load_balancer_network detach fail hard (422
 # resource not found, observed 6/6 in CI); not waiting leaves only a benign
 # already-detaching race that an idempotent destroy retry absorbs. The real
-# fix is single-ownership of the ingress LB - see plans/011.
+# fix is single-ownership of the ingress LB (tracked as a post-v3.0 design item).
 exit 0
 KH_INGRESS_LB_CLEANUP
 

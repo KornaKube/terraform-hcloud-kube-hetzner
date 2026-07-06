@@ -1,6 +1,0 @@
-# Plan 013 (post-v3.0, phased): kube-hetzner remote MCP server
-- **Priority**: P2 (ecosystem) | **Effort**: M (phase 1) / L (phase 2) | **Risk**: LOW (decoupled from module) | **Category**: direction | **Status**: TODO - design accepted 2026-07-06
-Successor to the Custom GPT (maintenance-heavy, ChatGPT-only). Remote MCP on Cloudflare Workers.
-Phase 1 (free tier): search + fetch over docs (lexical via D1 FTS + vector via Vectorize, hybrid ranking like convert-mcp's contract: search returns citation-ready IDs/titles/URLs, fetch returns full text); deterministic tools: variable_lookup (schema from variables.tf), v2_to_v3_rename_check (the MIGRATION.md map as a tool), config_schema_check (HCL-parse a kube.tf, flag unknown/renamed vars + type errors - catches most real user mistakes WITHOUT running tofu). Index build = CI step reusing the existing knowledge-generator script + llms.md (both already maintained). MCP prompts mirror the agent skills (migrate flow etc.) - one knowledge source, two channels.
-Phase 2 (paid/intensive tier): full `tofu validate`/plan-level checks in Cloudflare Containers (binaries can't run in the Workers runtime - containers are the honest path and a natural paid boundary), rate-limited free tier, keyed billing.
-Explicitly NOT coupled to the v3.0 tag - ships on its own cadence; v3's stabilized docs are the right index moment.

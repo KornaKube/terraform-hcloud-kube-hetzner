@@ -286,7 +286,7 @@ if [ "$destroy_exit" -ne 0 ]; then
   else
     retry=1
     while [ "$retry" -le "$MAX_RETRIES" ] && [ "$destroy_exit" -ne 0 ]; do
-      echo "Known benign destroy convergence race: hcloud CCM and Terraform can both act on the ingress LB during teardown (see plans/011); waiting ${RETRY_WAIT_SECONDS}s then retrying with -auto-approve."
+      echo "Known benign destroy convergence race: hcloud CCM and Terraform can both act on the adopted ingress LB during teardown; waiting ${RETRY_WAIT_SECONDS}s then retrying with -auto-approve."
       sleep "$RETRY_WAIT_SECONDS"
       run_retry_destroy "$@"
       destroy_exit=$?

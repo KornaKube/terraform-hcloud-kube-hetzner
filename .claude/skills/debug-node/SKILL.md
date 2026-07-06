@@ -198,8 +198,15 @@ cat /mnt/@/var/lib/rancher/k3s/server/token 2>/dev/null
 ```bash
 cat $SNAP/etc/selinux/config
 chroot $SNAP rpm -qa | grep -iE 'selinux|k3s|rke2'
-tail -20 /mnt/@/var/log/audit/audit.log | grep denied
+grep -i 'avc:.*denied' /mnt/@/var/log/audit/audit.log | tail -50
+journalctl -D /mnt/@/var/log/journal/ --no-pager | grep -i 'avc:.*denied' | tail -50
 ```
+
+For workload denials, follow `docs/selinux.md`: collect the AVC lines,
+workload name/version, k3s/RKE2 distribution, OS image, and udica result before
+proposing upstream policy changes. Do not globally disable SELinux as the first
+answer; use per-pool `selinux = false` only as the last resort for a workload or
+nodepool that cannot run under policy.
 
 ## Step 6: Apply a Fix
 
@@ -248,6 +255,8 @@ ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 root@
 | Provisioner hangs "Still creating" | SSH can't connect | All above | Fix underlying SSH issue |
 | Cloud-init skips modules | Already ran for instance-id | cloud-init.log | Clean `/var/lib/cloud/instance` |
 | k3s/rke2 not starting | Config or SELinux | Journal + audit.log | Fix config or policy |
+| Workload denied by SELinux | Missing workload policy | AVC lines in audit/journal | Follow `docs/selinux.md`; try udica before disabling a pool |
+| Network/subnet destroy hangs | Autoscaler-created server outside Terraform state | `hcloud server list` for cluster-name or `kh-ci-*` leftovers | Delete only after control plane is dead, or scale autoscaler `min_nodes = 0` first |
 | `/etc` change vanished | Edited outside transactional-update | Check packer phase | Move change to phase 2 |
 
 ## Debugging SSH Manually
@@ -273,3 +282,4 @@ ssh -vvv -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 root@<SERVER_IP>
 6. **Volatile overlay trap** — if rescue shows different content than the live system did, it was running on a volatile overlay that never got committed
 7. **After fixing packer, rebuild snapshots** — verify build logs show changes inside the `transactional-update` output
 8. **Rescue mode is non-destructive** — you're just reading/writing files on the disk
+9. **Destroy with the wrapper** — for full-cluster teardown, run `scripts/destroy.sh` from the Terraform root; it retries only the known ingress-LB detach race and prints a read-only orphan report. Use `scripts/cleanup.sh` only as the forceful fallback.

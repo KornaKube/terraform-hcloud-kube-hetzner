@@ -17,8 +17,9 @@ Run the standard validation suite for Terraform/OpenTofu changes against the tes
 
 ## Test Environment
 
-- **Module code:** `/Volumes/MysticalTech/Code/kube-hetzner`
-- **Test cluster:** `/Users/karim/Code/kube-test`
+- **Module code:** current git worktree (`git rev-parse --show-toplevel`)
+- **Test cluster:** an existing cluster Terraform root supplied by the operator
+  (`<existing-cluster-terraform-root>` in examples below)
 
 ## Workflow
 
@@ -51,7 +52,7 @@ digraph test_flow {
 ## Step 1: Format Check
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 terraform fmt -recursive
 ```
 
@@ -60,7 +61,7 @@ terraform fmt -recursive
 ## Step 2: Forbid null_resource Usage
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 if rg -n 'resource[[:space:]]+"null_resource"|provider[[:space:]]+"null"|hashicorp/null' -g '*.tf' -g '*.tf.json' .; then
   echo "Use terraform_data instead of null_resource/hashicorp/null. Moved blocks from old null_resource addresses are allowed for state migration."
   exit 1
@@ -74,7 +75,7 @@ the built-in `terraform_data` resource. Keep `moved` blocks that reference old
 ## Step 3: Initialize Local Providers
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 terraform init -backend=false
 ```
 
@@ -83,7 +84,7 @@ terraform init -backend=false
 ## Step 4: Validate Module
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 terraform validate -no-color
 ```
 
@@ -92,7 +93,7 @@ terraform validate -no-color
 ## Step 5: Validate OpenTofu Compatibility
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 tmpdir="$(mktemp -d)"
 rsync -a --exclude .git --exclude .terraform --exclude .terraform-tofu ./ "$tmpdir"/
 (cd "$tmpdir" && tofu init -backend=false -input=false && tofu validate -no-color)
@@ -110,10 +111,11 @@ checkout. Cross-variable contract failures are enforced by
 ## Step 6: Validate `kube.tf.example` Parseability
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
+MODULE_ROOT="$PWD"
 tmpdir="$(mktemp -d)"
 cp kube.tf.example "$tmpdir/main.tf"
-perl -0pi -e 's#source = "kube-hetzner/kube-hetzner/hcloud"#source = "/Volumes/MysticalTech/Code/kube-hetzner"#' "$tmpdir/main.tf"
+MODULE_ROOT="$MODULE_ROOT" perl -0pi -e 's#source = "kube-hetzner/kube-hetzner/hcloud"#source = "$ENV{MODULE_ROOT}"#' "$tmpdir/main.tf"
 (cd "$tmpdir" && terraform fmt -check main.tf && terraform init -backend=false && terraform validate)
 ```
 
@@ -122,7 +124,7 @@ perl -0pi -e 's#source = "kube-hetzner/kube-hetzner/hcloud"#source = "/Volumes/M
 ## Step 6.5: Validate Large Tailscale Examples
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 uv run scripts/validate_tailscale_large_scale_examples.py
 ```
 
@@ -139,7 +141,7 @@ provider-download failures during `terraform init`.
 ## Step 6.6: Validate v3 Final-Polish Surfaces
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 uv run scripts/validate_v3_final_polish_examples.py
 ```
 
@@ -152,7 +154,7 @@ snippets, Cloudflare external-access boundary, and validation gates in sync.
 ## Step 6.7: Run v3 Blast-Radius Plan Matrix
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-hetzner
+cd "$(git rev-parse --show-toplevel)"
 uv run scripts/smoke_v3_plan_matrix.py
 ```
 
@@ -167,7 +169,7 @@ for the external-network Tailscale plan smoke.
 ## Step 7: Initialize Test Environment
 
 ```bash
-cd /Users/karim/Code/kube-test
+cd <existing-cluster-terraform-root>
 terraform init -upgrade
 ```
 
@@ -176,7 +178,7 @@ This picks up changes from the local module.
 ## Step 8: Plan Against Test Cluster
 
 ```bash
-cd /Users/karim/Code/kube-test
+cd <existing-cluster-terraform-root>
 terraform plan
 ```
 
@@ -204,6 +206,15 @@ If `terraform plan` shows ANY resource destruction on existing infrastructure:
 3. Migration guide is required
 4. Consider alternative approaches first
 
+### Empty-State Upgrade Gotcha
+
+An empty state file is not an upgrade proof. It yields a fresh-deploy plan, so it
+cannot prove whether a module branch preserves existing resources. When no live
+upgrade root is available, use a tag-vs-branch plan-address-set diff as the
+structural proxy: render the same config against the released tag and the branch,
+save both plan JSON files, and compare sorted `.resource_changes[].address`
+sets. Address churn is the signal to investigate before any live apply.
+
 ## Step 9: Review Plan Output
 
 ### Checklist
@@ -227,7 +238,8 @@ If `terraform plan` shows ANY resource destruction on existing infrastructure:
 
 ```bash
 # Full test sequence
-cd /Volumes/MysticalTech/Code/kube-hetzner && \
+cd "$(git rev-parse --show-toplevel)" && \
+MODULE_ROOT="$PWD" && \
 terraform fmt -recursive && \
 if rg -n 'resource[[:space:]]+"null_resource"|provider[[:space:]]+"null"|hashicorp/null' -g '*.tf' -g '*.tf.json' .; then exit 1; fi && \
 terraform init -backend=false && \
@@ -237,13 +249,13 @@ rsync -a --exclude .git --exclude .terraform --exclude .terraform-tofu ./ "$tmpd
 (cd "$tmpdir" && tofu init -backend=false && tofu validate) && \
 rm -rf "$tmpdir" && \
 tmpdir="$(mktemp -d)" && cp kube.tf.example "$tmpdir/main.tf" && \
-perl -0pi -e 's#source = "kube-hetzner/kube-hetzner/hcloud"#source = "/Volumes/MysticalTech/Code/kube-hetzner"#' "$tmpdir/main.tf" && \
+MODULE_ROOT="$MODULE_ROOT" perl -0pi -e 's#source = "kube-hetzner/kube-hetzner/hcloud"#source = "$ENV{MODULE_ROOT}"#' "$tmpdir/main.tf" && \
 (cd "$tmpdir" && terraform fmt -check main.tf && terraform init -backend=false && terraform validate) && \
 rm -rf "$tmpdir" && \
 uv run scripts/validate_tailscale_large_scale_examples.py && \
 uv run scripts/validate_v3_final_polish_examples.py && \
 uv run scripts/smoke_v3_plan_matrix.py && \
-cd /Users/karim/Code/kube-test && \
+cd <existing-cluster-terraform-root> && \
 terraform init -upgrade && \
 terraform plan
 ```
@@ -253,11 +265,51 @@ terraform plan
 Only if plan looks correct and you want to test on actual infrastructure:
 
 ```bash
-cd /Users/karim/Code/kube-test
+cd <existing-cluster-terraform-root>
 terraform apply
 ```
 
 **Caution:** This modifies real infrastructure. Only do this for thorough testing.
+
+## Teardown After Live Tests
+
+When destroying a live test root, run the module teardown helper from the
+Terraform root:
+
+```bash
+cd <existing-cluster-terraform-root>
+<module-checkout>/scripts/destroy.sh -auto-approve
+```
+
+`scripts/destroy.sh` is the recommended teardown path. It auto-retries only the
+known benign ingress-LB detach race (`resource_already_detaching`/422 from dual
+CCM and Terraform ownership), then prints a read-only orphan report including
+unlabeled primary IPs, out-of-state autoscaled nodes, and exact managed load
+balancer names. Use `scripts/cleanup.sh` only as the forceful fallback after the
+report shows leftovers or state is already wrecked.
+
+Autoscaler-created servers are not in Terraform state. If an autoscaled server
+pins the network/subnet during destroy, delete it only after the control plane is
+dead, or first scale the autoscaler pool to `min_nodes = 0`. Deleting it while
+Cluster Autoscaler is alive with `min_nodes > 0` lets the autoscaler recreate it.
+
+## CI Truth-Checking
+
+For CI-backed verification, require completed success, not merely absence of
+failures:
+
+```bash
+gh run list --repo kube-hetzner/terraform-hcloud-kube-hetzner --branch <branch> --limit 20
+gh run view <run-id> --repo kube-hetzner/terraform-hcloud-kube-hetzner --json status,conclusion,attempt,workflowName,jobs
+```
+
+The render-harness `Lint` job once hid by hanging for its whole lifetime via
+`setup-terraform`'s stdin-swallowing wrapper; `.github/workflows/lint_pr.yaml`
+now keeps that wrapper disabled. Hetzner `resource_unavailable` or "error during
+placement" is a capacity flake: use `gh run rerun <run-id> --failed`. Avoid
+`gh run cancel` on in-flight Hetzner runs; it skips destroy and can orphan
+attempt-suffixed `kh-ci-*-<runid6><attempt>*` resources that must be swept after
+the run reports completed.
 
 ## Common Issues
 

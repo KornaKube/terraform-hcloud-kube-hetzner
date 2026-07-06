@@ -43,7 +43,9 @@ WebSearch "hetzner cloud server types pricing 2026"
 | `CHANGELOG.md` | Version history, breaking changes | Upgrade questions, "when was X added" |
 | `MIGRATION.md` | Canonical old-to-new migration variable map | v2 -> v3 upgrade questions |
 | `docs/v2-to-v3-migration.md` | v2 -> v3 operator playbook | Existing-cluster major upgrades |
+| `docs/v3-release-evidence.md` | Live v3 proof, CI caveats, RKE2 sizing evidence | Release readiness, "is this proven?" questions |
 | `docs/v3-topology-recommendations.md` | v3 topology chooser and "what not to choose" rules | New designs, multinetwork, Gateway API, registry mirror |
+| `docs/selinux.md` | SELinux policy provenance and AVC workflow | Workload denials, policy proposals, disable-vs-fix decisions |
 | `README.md` | Project overview, quick start | New user orientation |
 
 ### Specialized Documentation
@@ -97,6 +99,7 @@ grep 'variable "<name>"' variables.tf
 | Location not in network_region | network_region must cover all locations |
 | Confusing autoscaler with agents | Autoscaler pools are completely separate |
 | Using old version | Always check latest release first |
+| Using v2 input names in v3 | Rewrite with `MIGRATION.md`: `enable_*` booleans, `kubernetes_distribution`, `k3s_channel`, `rke2_channel`, `node_transport_mode`, and `network_subnet_mode` |
 | Raw Hetzner private multinetwork for >100 nodes | Use `node_transport_mode = "tailscale"` or the experimental Cilium public overlay; Hetzner private Networks do not route to each other |
 | Treating external Tailscale hooks as node transport | Use `node_transport_mode = "tailscale"` for cluster transport; use `node_connection_overrides` only for user-owned operator access |
 | Treating Cloudflare Mesh/WARP as supported node transport | Use Tailscale for kube-hetzner-managed secure node transport; Cloudflare Access/Tunnel is external operator/app access only |
@@ -105,6 +108,9 @@ grep 'variable "<name>"' variables.tf
 | Confusing Cilium Gateway API with Traefik Gateway provider | Use `cilium_gateway_api_enabled` for Cilium, `traefik_provider_kubernetes_gateway_enabled` for Traefik |
 | Enabling Cilium Gateway API with kube-proxy | Requires `cni_plugin = "cilium"` and `enable_kube_proxy = false` |
 | Enabling embedded registry mirror on low-trust nodes | Use only for equal-trust clusters; warn about credential sharing and tag poisoning |
+| Disabling SELinux globally for one workload denial | Follow `docs/selinux.md`: collect AVCs, try udica, use per-pool `selinux = false` only as the last resort |
+| Assuming RKE2 needs 8GB control planes | v3 size-aware kubelet reservations make 4GB `cx23` control planes viable; still size production for workload headroom |
+| Manual cloud deletes during teardown | Use `scripts/destroy.sh` first; `scripts/cleanup.sh` is the forceful fallback |
 
 ### v3 Topology Shortcuts
 
@@ -135,6 +141,9 @@ grep 'variable "<name>"' variables.tf
 | `Node stuck in NotReady` | Network region mismatch or token issues | Ensure network_region contains all node locations |
 | `Error creating network subnet` | Subnet CIDR conflicts | Check network_ipv4_cidr doesn't overlap with existing |
 | `cloud-init failed` | Leap Micro/MicroOS snapshot missing, wrong region, wrong architecture, or wrong distro label | Recreate snapshots with packer in the correct region/architecture and k3s/RKE2 SELinux variant |
+| `resource_already_detaching` or LB network 422 during destroy | Known benign ingress-LB detach race between CCM and Terraform ownership | Run `scripts/destroy.sh`; it retries only this race and then prints an orphan report |
+| Network/subnet destroy hangs with autoscaler enabled | Autoscaler-created servers are not in Terraform state and still pin the network | Wait until the control plane is dead, or scale autoscaler `min_nodes = 0`, then delete the orphan |
+| SELinux `avc: denied` workload failures | Missing workload policy, not automatically a module bug | Follow `docs/selinux.md`; collect AVC evidence and try udica before upstreaming policy or disabling a pool |
 
 ### Debugging Workflow
 
@@ -155,11 +164,14 @@ grep 'variable "<name>"' variables.tf
 
 | Type | vCPU | RAM | Disk | Best For |
 |------|------|-----|------|----------|
-| `cpx11` | 2 | 2GB | 40GB | Minimal dev |
-| `cpx21` | 3 | 4GB | 80GB | Dev/small workloads |
-| `cpx31` | 4 | 8GB | 160GB | Production control plane |
-| `cpx41` | 8 | 16GB | 240GB | Production workers |
-| `cpx51` | 16 | 32GB | 360GB | Heavy workloads |
+| `cx23` | 2 | 4GB | 40GB | Minimal dev, small k3s/RKE2 control planes |
+| `cx33` | 4 | 8GB | 80GB | Production control plane, moderate workers |
+| `cx43` | 8 | 16GB | 160GB | Production workers |
+| `cx53` | 16 | 32GB | 320GB | Heavy workloads |
+
+`cx23` is the current minimum used throughout the v3 examples. The RKE2 + Leap
+Micro `cx23` control-plane shape is live-proven in `docs/v3-release-evidence.md`
+after size-aware kubelet reservations landed.
 
 ### Server Types (ARM — CAX, cost-optimized)
 
@@ -194,6 +206,7 @@ grep 'variable "<name>"' variables.tf
 
 2. Ask clarifying questions:
    - Use case: Production / Development / Testing?
+   - Kubernetes distribution: k3s (default) / RKE2?
    - HA: Single node / 3 control planes / Super-HA (multi-location)?
    - Budget: Which server types?
    - Network: Public / Private with NAT router?
@@ -205,7 +218,7 @@ grep 'variable "<name>"' variables.tf
 
 4. Generate complete config with:
    - Module source and version (latest!)
-   - Required: hcloud_token, SSH keys
+   - Required: hcloud_token, SSH keys, `kubernetes_distribution` only when not default k3s
    - Requested features
    - Helpful comments
 
@@ -239,6 +252,19 @@ grep 'variable "<name>"' variables.tf
    - Link to related issues
 ```
 
+### Workflow: Teardown / Destroy
+
+```
+1. Run from the user's Terraform root:
+   <module-checkout>/scripts/destroy.sh -auto-approve
+2. Read the script's orphan report before taking forceful action.
+3. Use <module-checkout>/scripts/cleanup.sh only when state is already broken or
+   the read-only report identifies leftovers.
+4. If autoscaler-created servers pin network/subnet deletion, delete them only
+   after the control plane is dead, or first set the autoscaler pool
+   min_nodes = 0 and apply.
+```
+
 ### Workflow: Feature Questions
 
 ```
@@ -262,11 +288,13 @@ grep 'variable "<name>"' variables.tf
    - Inverted boolean semantics
    - State migration requirements
    - Network/subnet/LB/server replacement risk
+   - Production no-destroy gate from `MIGRATION.md`
 5. Generate upgrade steps:
    - Update version in kube.tf
    - terraform init -upgrade
    - terraform validate
-   - terraform plan (check for destructions!)
+   - terraform plan -out=<planfile> (check for destructions!)
+   - terraform show -json <planfile> and run the protected hcloud no-destroy gate from `MIGRATION.md`
    - terraform apply
 6. Warn if terraform plan shows resource recreation
 ```
@@ -279,12 +307,19 @@ Core rules:
 - Back up state before editing.
 - Rewrite v2-only inputs using `MIGRATION.md`.
 - Invert positive/negative booleans carefully.
+- Preserve the first-apply compatibility freeze unless the operator deliberately
+  chooses a topology/runtime change: `k3s_channel = "stable"` is the v3 default,
+  but v2 upgrades usually pin `k3s_channel = "v1.33"` or `k3s_version`; unset
+  addon versions become deterministic reviewed defaults; `network_subnet_mode`
+  stays `per_nodepool`; `node_transport_mode` stays `hetzner_private`.
 - Remove `network_id = 0`; omitted/null means the primary Network in v3.
 - Remove control-plane `network_id`; control planes stay on the primary Network.
 - For secure Tailnet access or private multinetwork scale, prefer `node_transport_mode = "tailscale"`. For v2-to-v3 upgrades, introduce large multinetwork scale in a separate audited plan after the base upgrade. Tailscale mode keeps Kubernetes node IPs on Hetzner private addresses and can advertise node-private `/32` routes with Tailscale subnet-route SNAT disabled. Active agent/autoscaler nodepools in Tailscale mode must set `network_scope = "primary"` or `network_scope = "external"` so invalid same-root external Network configs fail at plan time.
 - Do not suggest Calico with Tailscale node transport yet. Flannel is first supported; Cilium is still explicitly experimental in this transport mode.
 - For Cloudflare, recommend only the external Access/Tunnel pattern for kube API, SSH, Rancher, Grafana, or ingress. Do not suggest Cloudflare Mesh/WARP as kube-hetzner node transport and do not invent Cloudflare provider inputs.
 - Run `terraform fmt -recursive`, `terraform init -upgrade`, `terraform validate`, and `terraform plan -out=v3-upgrade.tfplan`.
+- Run the protected hcloud no-destroy gate from `MIGRATION.md`; it includes
+  `hcloud_placement_group` and `hcloud_firewall`.
 - Do not apply when the plan has unexplained replacements or destroys.
 
 ---
@@ -308,7 +343,7 @@ module "kube-hetzner" {
   control_plane_nodepools = [
     {
       name        = "control-plane"
-      server_type = "cpx21"
+      server_type = "cx23"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -319,7 +354,7 @@ module "kube-hetzner" {
   agent_nodepools = [
     {
       name        = "worker"
-      server_type = "cpx21"
+      server_type = "cx23"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -349,7 +384,7 @@ module "kube-hetzner" {
   control_plane_nodepools = [
     {
       name        = "control-plane"
-      server_type = "cpx31"
+      server_type = "cx33"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -360,7 +395,7 @@ module "kube-hetzner" {
   agent_nodepools = [
     {
       name        = "worker"
-      server_type = "cpx41"
+      server_type = "cx43"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -400,7 +435,7 @@ module "kube-hetzner" {
   control_plane_nodepools = [
     {
       name        = "control-plane"
-      server_type = "cpx31"
+      server_type = "cx33"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -414,7 +449,7 @@ module "kube-hetzner" {
   agent_nodepools = [
     {
       name        = "worker"
-      server_type = "cpx41"
+      server_type = "cx43"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -514,7 +549,7 @@ module "kube-hetzner" {
   control_plane_nodepools = [
     {
       name        = "control-plane"
-      server_type = "cpx31"
+      server_type = "cx33"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -525,7 +560,7 @@ module "kube-hetzner" {
   agent_nodepools = [
     {
       name        = "worker"
-      server_type = "cpx41"
+      server_type = "cx43"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -593,7 +628,7 @@ module "kube-hetzner" {
   control_plane_nodepools = [
     {
       name        = "cp-fsn"
-      server_type = "cpx31"
+      server_type = "cx33"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -601,7 +636,7 @@ module "kube-hetzner" {
     },
     {
       name        = "cp-nbg"
-      server_type = "cpx31"
+      server_type = "cx33"
       location    = "nbg1"
       labels      = []
       taints      = []
@@ -609,7 +644,7 @@ module "kube-hetzner" {
     },
     {
       name        = "cp-hel"
-      server_type = "cpx31"
+      server_type = "cx33"
       location    = "hel1"
       labels      = []
       taints      = []
@@ -621,7 +656,7 @@ module "kube-hetzner" {
   agent_nodepools = [
     {
       name        = "worker-fsn"
-      server_type = "cpx41"
+      server_type = "cx43"
       location    = "fsn1"
       labels      = []
       taints      = []
@@ -629,7 +664,7 @@ module "kube-hetzner" {
     },
     {
       name        = "worker-nbg"
-      server_type = "cpx41"
+      server_type = "cx43"
       location    = "nbg1"
       labels      = []
       taints      = []
@@ -637,7 +672,7 @@ module "kube-hetzner" {
     },
     {
       name        = "worker-hel"
-      server_type = "cpx41"
+      server_type = "cx43"
       location    = "hel1"
       labels      = []
       taints      = []

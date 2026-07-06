@@ -1,6 +1,6 @@
 ---
 name: sync-docs
-description: Use when documentation needs updating - ensures variables.tf, llms.md, kube.tf.example, and README are in sync
+description: Use when documentation needs updating - ensures variables.tf, docs/llms.md, kube.tf.example, and README are in sync
 ---
 
 # Sync Documentation
@@ -23,9 +23,14 @@ Ensure documentation is synchronized across all key files when variables or feat
 | `docs/llms.md` | Comprehensive variable reference | HIGH |
 | `kube.tf.example` | Working example configuration | HIGH |
 | `README.md` | Project overview and quick start | MEDIUM |
+| `MIGRATION.md` | Operator-facing upgrade contract and v2 -> v3 variable map | HIGH for major upgrades |
+| `docs/v2-to-v3-migration.md` | Stepwise migration playbook | HIGH for major upgrades |
+| `docs/selinux.md` | SELinux policy provenance and AVC workflow | HIGH for SELinux changes |
+| `docs/v3-release-evidence.md` | Live proof and release evidence | HIGH for release claims |
 | `docs/terraform.md` | Auto-generated terraform docs | AUTO |
 | `docs/v3-topology-recommendations.md` | Topology chooser and release-shaping guidance | MEDIUM |
 | `examples/*/README.md` | Feature-specific operator examples | MEDIUM |
+| `tests/README.md` | Test gate expectations and live-test notes | MEDIUM |
 | `.claude/skills/*/SKILL.md` | Agent/operator workflows | MEDIUM |
 
 ## Workflow
@@ -36,9 +41,9 @@ digraph sync_flow {
     node [shape=box];
 
     extract [label="1. Extract from variables.tf"];
-    compare [label="2. Compare with llms.md"];
+    compare [label="2. Compare with docs/llms.md"];
     gaps [label="3. Identify gaps"];
-    update_llms [label="4. Update llms.md"];
+    update_llms [label="4. Update docs/llms.md"];
     update_example [label="5. Update kube.tf.example"];
     update_readme [label="6. Update README if needed"];
     verify [label="7. Verify consistency"];
@@ -67,14 +72,14 @@ gemini --model gemini-3.1-pro-preview -p "@variables.tf For variable '<name>', p
 ## Step 2: Find Undocumented Variables
 
 ```bash
-# Compare variables.tf with llms.md
+# Compare variables.tf with docs/llms.md
 gemini --model gemini-3.1-pro-preview -p \
-  "@variables.tf @docs/llms.md List ALL variables from variables.tf that are NOT documented in llms.md. Output one per line."
+  "@variables.tf @docs/llms.md List ALL variables from variables.tf that are NOT documented in docs/llms.md. Output one per line."
 ```
 
 ## Step 3: Generate Documentation
 
-### llms.md Format
+### docs/llms.md Format
 
 ```markdown
 **Variable Name**
@@ -99,16 +104,16 @@ variable_name = "default_value"
   # variable_name = "default_value"
 ```
 
-## Step 4: Update llms.md
+## Step 4: Update docs/llms.md
 
 For each undocumented variable:
 
 1. Read variable definition from `variables.tf`
 2. Understand its usage in `locals.tf` and other files
 3. Write comprehensive documentation following the format above
-4. Place in appropriate section of `llms.md`
+4. Place in appropriate section of `docs/llms.md`
 
-### Section Organization in llms.md
+### Section Organization in docs/llms.md
 
 | Section | Variables |
 |---------|-----------|
@@ -175,7 +180,7 @@ For Cilium Gateway API changes, keep these surfaces in sync:
 
 For embedded registry mirror changes, keep these surfaces in sync:
 - `variables.tf` validation for `embedded_registry_mirror`
-- `locals.tf` effective `registries.yaml` merge behavior
+- `locals.tf` effective generated registries YAML merge behavior
 - host/control-plane/agent/autoscaler config rendering
 - `README.md`
 - `kube.tf.example`
@@ -183,6 +188,37 @@ For embedded registry mirror changes, keep these surfaces in sync:
 - `docs/v3-topology-recommendations.md`
 - `.claude/skills/kh-assistant/SKILL.md`
 - `.claude/skills/test-changes/SKILL.md`
+
+For v2 -> v3 migration or production-upgrade safety changes, keep these
+surfaces in sync:
+- `MIGRATION.md`, especially "Production in-place upgrades: safety model"
+- `docs/v2-to-v3-migration.md`
+- `CHANGELOG.md` upgrade notes
+- `docs/v3-release-evidence.md` live proof
+- `.claude/skills/migrate-v2-to-v3/SKILL.md`
+- `.claude/skills/upgrade-cluster/SKILL.md`
+- `.claude/skills/kh-assistant/SKILL.md`
+
+The no-destroy gate must include the full protected hcloud set:
+`hcloud_server`, `hcloud_network`, `hcloud_network_subnet`,
+`hcloud_load_balancer`, `hcloud_volume`, `hcloud_primary_ip`,
+`hcloud_placement_group`, and `hcloud_firewall`.
+
+For SELinux changes, keep these surfaces in sync:
+- `docs/selinux.md`
+- `templates/kube-hetzner-selinux.te`
+- `templates/k8s-custom-policies.te`
+- `variables.tf` `enable_selinux` and per-pool `selinux`
+- `.claude/skills/debug-node/SKILL.md`
+- `.claude/skills/kh-assistant/SKILL.md`
+
+Do not make generic "disable SELinux" recommendations. The operator path is
+AVC evidence, udica-first workload policy, upstream module policy only with
+reproducible denials, and per-pool `selinux = false` as the last resort.
+
+For release presentation changes, verify README's "What's New in v3" tag link
+still points at the current release tag, and keep the section current with the
+live GitHub release body.
 
 ## Step 7: Verify Consistency
 
@@ -194,29 +230,32 @@ gemini --model gemini-3.1-pro-preview -p \
 
 ### Verification Checklist
 
-- [ ] All variables.tf variables documented in llms.md
+- [ ] All variables.tf variables documented in docs/llms.md
 - [ ] All major variables appear in kube.tf.example
 - [ ] README features match actual capabilities
 - [ ] No typos in variable names across files
 - [ ] Default values consistent across docs
+- [ ] Major-upgrade safety wording matches `MIGRATION.md`
+- [ ] SELinux workload-denial wording points to `docs/selinux.md`
+- [ ] README "What's New in v3" release-tag URL is current for the release train
 
 ## Common Sync Issues
 
 ### Variable renamed
 1. Update in variables.tf
-2. Search and replace in llms.md
+2. Search and replace in docs/llms.md
 3. Search and replace in kube.tf.example
 4. Add to CHANGELOG.md (breaking change!)
 
 ### Variable removed
 1. Remove from variables.tf
-2. Remove from llms.md
+2. Remove from docs/llms.md
 3. Remove from kube.tf.example
 4. Add to CHANGELOG.md (breaking change!)
 
 ### Default changed
 1. Update in variables.tf
-2. Update in llms.md
+2. Update in docs/llms.md
 3. Update in kube.tf.example
 4. Consider if this is a breaking change
 
@@ -229,6 +268,10 @@ terraform-docs markdown . > docs/terraform.md
 # Validate v3 topology/Gateway/registry surfaces
 uv run scripts/validate_v3_final_polish_examples.py
 
+# Validate rendered templates and negative contract cases when those surfaces change
+uv run scripts/render_harness.py
+uv run scripts/contract_negative_tests.py
+
 # Search for variable across all docs
 rg -n "variable_name" docs/ kube.tf.example README.md
 
@@ -240,5 +283,5 @@ diff <(rg -o 'variable "([^"]+)"' -r '$1' variables.tf | sort) \
 ## After Sync
 
 1. Run `terraform fmt -recursive`
-2. Commit with message: `docs: sync documentation with variables.tf`
+2. Commit only if the current task calls for a commit, with message: `docs: sync documentation with variables.tf`
 3. If breaking changes, update CHANGELOG.md

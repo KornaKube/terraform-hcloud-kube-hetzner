@@ -24,8 +24,8 @@ Read these before editing:
 5. `variables.tf` - exact v3 input contract and validation rules
 6. `kube.tf.example` - current v3 configuration example
 7. `scripts/v2_to_v3_migration_assistant.py` - static config and plan audit
-8. `plans/010-report.md` - index-keyed nodepool ordering risk
-9. `plans/011-ingress-lb-single-ownership.md` - ingress LB destroy race
+8. `docs/selinux.md` - SELinux policy, AVC evidence, and per-pool fallback
+9. `scripts/destroy.sh` and `scripts/cleanup.sh` - teardown and orphan cleanup
 
 ## Safety Rules
 
@@ -41,6 +41,8 @@ Read these before editing:
   `hcloud_server`, `hcloud_load_balancer`, `hcloud_primary_ip`,
   `hcloud_placement_group`, `hcloud_volume`, or `hcloud_firewall` as blockers
   until explained.
+- For production in-place upgrades, `MIGRATION.md` is the operator-facing safety
+  contract. Its no-destroy jq gate is canonical; do not weaken or abbreviate it.
 - Never reorder or insert control-plane or agent nodepools mid-list during or
   after migration. Node resource addresses are index-keyed; append only unless
   the user is intentionally planning a state migration or blue/green rebuild.
@@ -53,10 +55,11 @@ Read these before editing:
 
 Determine:
 
-- Terraform root path, default `/Users/karim/Code/kube-test` when working on
-  Karim's test cluster.
+- Terraform root path.
 - Current module source/version.
 - Target v3 tag.
+- Kubernetes distribution intent: keep k3s, or explicitly plan an RKE2 rebuild/
+  migration separately from the base v2 -> v3 module upgrade.
 - K3s version/channel intent: pin `k3s_version`, set
   `k3s_channel = "v1.33"`, or consciously accept v3 `stable`.
 - Whether nodes have out-of-band root SSH keys outside
@@ -67,6 +70,9 @@ Determine:
 - Whether this is a live production cluster.
 - Whether it uses NAT router, private-only nodes, Robot/vSwitch,
   autoscaler, Cilium, Longhorn, or external networks.
+- Whether SELinux workload denials are currently part of the incident. If yes,
+  collect AVC evidence and follow `docs/selinux.md` rather than disabling
+  SELinux globally.
 
 ## Workflow
 
@@ -104,7 +110,8 @@ If editing user config directly, preserve a copy of touched `.tf` files.
 
 Use `MIGRATION.md` for the complete map. Critical transformations:
 
-- Rename distribution-neutral inputs, e.g. `k3s_token` -> `cluster_token`.
+- Rename distribution-neutral inputs, e.g. `k3s_token` -> `cluster_token` and
+  `kubernetes_distribution_type` -> `kubernetes_distribution`.
 - Invert negative booleans:
   - `disable_kube_proxy` -> `enable_kube_proxy`
   - `disable_network_policy` -> `enable_network_policy`
@@ -269,10 +276,21 @@ Do not panic-abort a healthy first v3 plan for these expected actions:
 - Cloudflare Access/Tunnel is an external access pattern only. Do not invent
   Cloudflare provider inputs, and do not recommend Cloudflare Mesh/WARP as
   kube-hetzner node transport during a migration.
-- If the user later destroys the cluster, one `terraform destroy` retry may be
-  needed because the ingress load balancer can race between CCM deletion and
-  Terraform network detach. Never manually delete the network first; let
-  Terraform own the teardown and retry after the detach settles.
+- SELinux remains enabled by default in v3. For workload denials, use
+  `docs/selinux.md`: collect AVC lines, try udica-generated workload policy
+  first, propose upstream module policy only with reproducible AVC evidence, and
+  use per-pool `selinux = false` only as the last resort.
+- If the user later destroys the cluster, use `scripts/destroy.sh` from the
+  Terraform root. It auto-retries only the known benign ingress-LB detach race
+  (`resource_already_detaching`/422 from dual CCM and Terraform ownership) and
+  then prints a read-only orphan report for unlabeled primary IPs,
+  out-of-state autoscaled nodes, and exact managed LB names. Use
+  `scripts/cleanup.sh` only as the forceful fallback after the report shows
+  leftovers or state is already wrecked.
+- Autoscaler-created servers are not in Terraform state and can pin
+  network/subnet deletion. Delete those orphans only after the control plane is
+  dead, or first scale the autoscaler pool to `min_nodes = 0`; deleting them
+  earlier while Cluster Autoscaler is alive can recreate them.
 - If adding Cilium Gateway API after migration, require `cni_plugin = "cilium"`
   and `enable_kube_proxy = false`.
 - If adding embedded registry mirror after migration, warn that nodes are
@@ -291,8 +309,10 @@ Return a migration report:
 - Terraform/OpenTofu version:
 - hcloud provider version:
 - K3s channel/version intent:
+- Kubernetes distribution intent:
 - Addon version intent:
 - SSH authorized_keys policy:
+- SELinux intent and AVC evidence, if relevant:
 - Inputs changed:
 - Inputs removed:
 - Manual state actions:
