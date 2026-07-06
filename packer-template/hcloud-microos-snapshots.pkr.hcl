@@ -18,10 +18,9 @@ variable "hcloud_token" {
 
 # Server type and location used to build each snapshot. Override these when the defaults are
 # unavailable in your project (Hetzner availability varies by location and over time), e.g.:
-#   packer build -var x86_server_type=cpx31 -var x86_location=fsn1 hcloud-microos-snapshots.pkr.hcl
-# To build only one architecture (e.g. no ARM capacity available), use -only:
-#   packer build -only=hcloud.microos-x86-snapshot hcloud-microos-snapshots.pkr.hcl
-# Any server type works as long as its disk is >= 40GiB (needed to install the MicroOS image).
+#   packer build -var x86_server_type=cpx31 -var x86_location=fsn1 <template>.pkr.hcl
+# To build only one architecture (e.g. no ARM capacity available), use -only with the
+# corresponding source name. Any server type works as long as its disk is >= 40GiB.
 variable "x86_server_type" {
   type    = string
   default = "cx23"
@@ -41,6 +40,7 @@ variable "arm_location" {
   type    = string
   default = "fsn1"
 }
+
 
 # We download the OpenSUSE MicroOS x86 image from an automatically selected mirror.
 variable "opensuse_microos_x86_mirror_link" {
@@ -96,8 +96,8 @@ locals {
   # Commands to write sysctl config if provided (decode base64)
   sysctl_commands = local.sysctl_config_content != "" ? "echo '${local.sysctl_config_content}' | base64 -d > /etc/sysctl.d/99-custom.conf" : ""
 
-  # Add local variables for inline shell commands
-  download_image = "wget --timeout=5 --waitretry=5 --tries=5 --retry-connrefused --inet4-only "
+  # Keep output low; otherwise long downloads can overwhelm CI/log capture.
+  download_image = "wget --progress=dot:giga -nv --timeout=5 --waitretry=5 --tries=5 --retry-connrefused --inet4-only "
 
   write_image = <<-EOT
     set -ex

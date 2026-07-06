@@ -4,17 +4,17 @@ kind: ServiceAccount
 metadata:
   labels:
     k8s-addon: cluster-autoscaler.addons.k8s.io
-    k8s-app: cluster-autoscaler
-  name: cluster-autoscaler
+    k8s-app: ${autoscaler_name}
+  name: ${autoscaler_name}
   namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cluster-autoscaler
+  name: ${autoscaler_name}
   labels:
     k8s-addon: cluster-autoscaler.addons.k8s.io
-    k8s-app: cluster-autoscaler
+    k8s-app: ${autoscaler_name}
 rules:
   - apiGroups: [""]
     resources: ["events", "endpoints"]
@@ -27,7 +27,7 @@ rules:
     verbs: ["update"]
   - apiGroups: [""]
     resources: ["endpoints"]
-    resourceNames: ["cluster-autoscaler"]
+    resourceNames: ["${autoscaler_name}"]
     verbs: ["get", "update"]
   - apiGroups: [""]
     resources: ["nodes"]
@@ -53,6 +53,9 @@ rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses", "csinodes", "csistoragecapacities", "csidrivers", "volumeattachments"]
     verbs: ["watch", "list", "get"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["deviceclasses", "resourceclaims", "resourceslices"]
+    verbs: ["watch", "list", "get"]
   - apiGroups: ["batch", "extensions"]
     resources: ["jobs"]
     verbs: ["get", "list", "watch", "patch"]
@@ -60,117 +63,123 @@ rules:
     resources: ["leases"]
     verbs: ["create"]
   - apiGroups: ["coordination.k8s.io"]
-    resourceNames: ["cluster-autoscaler"]
+    resourceNames: ["${leader_election_resource_name}"]
     resources: ["leases"]
     verbs: ["get", "update"]
-  - apiGroups: ["resource.k8s.io"]
-    resources: ["deviceclasses", "resourceclaims", "resourceslices"]
-    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: cluster-autoscaler
+  name: ${autoscaler_name}
   namespace: kube-system
   labels:
     k8s-addon: cluster-autoscaler.addons.k8s.io
-    k8s-app: cluster-autoscaler
+    k8s-app: ${autoscaler_name}
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["create","list","watch"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    resourceNames: ["cluster-autoscaler-status", "cluster-autoscaler-priority-expander"]
+    resourceNames: ["${autoscaler_name}-status", "cluster-autoscaler-priority-expander"]
     verbs: ["delete", "get", "update", "watch"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: cluster-autoscaler
+  name: ${autoscaler_name}
   labels:
     k8s-addon: cluster-autoscaler.addons.k8s.io
-    k8s-app: cluster-autoscaler
+    k8s-app: ${autoscaler_name}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: cluster-autoscaler
+  name: ${autoscaler_name}
 subjects:
   - kind: ServiceAccount
-    name: cluster-autoscaler
+    name: ${autoscaler_name}
     namespace: kube-system
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: cluster-autoscaler
+  name: ${autoscaler_name}
   namespace: kube-system
   labels:
     k8s-addon: cluster-autoscaler.addons.k8s.io
-    k8s-app: cluster-autoscaler
+    k8s-app: ${autoscaler_name}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: cluster-autoscaler
+  name: ${autoscaler_name}
 subjects:
   - kind: ServiceAccount
-    name: cluster-autoscaler
+    name: ${autoscaler_name}
     namespace: kube-system
 
 ---
-# Cluster-Autoscaler config as a Secret instead of an env var.
-# Background: HCLOUD_CLUSTER_CONFIG carries a ~22 KB cloud-init copy per
-# pool (~99% identical across pools). With ≥6 pools the env var exceeds the
-# Linux kernel limit MAX_ARG_STRLEN (128 KB) and the CA pod fails with
-# "exec ./cluster-autoscaler: argument list too long".
-# File-mount via Secret bypasses the limit entirely (Secrets are capped at
-# 1 MB). The CA already supports this via HCLOUD_CLUSTER_CONFIG_FILE
-# (see cloudprovider/hetzner/hetzner_manager.go).
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${autoscaler_name}-metrics
+  namespace: kube-system
+  labels:
+    app: ${autoscaler_name}
+spec:
+  type: NodePort
+  selector:
+    app: ${autoscaler_name}
+  ports:
+    - name: metrics
+      protocol: TCP
+      port: 8085
+      targetPort: 8085
+      nodePort: ${metrics_node_port}
+
+---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: cluster-autoscaler-config
+  name: ${autoscaler_name}-config
   namespace: kube-system
   labels:
     k8s-addon: cluster-autoscaler.addons.k8s.io
-    k8s-app: cluster-autoscaler
+    k8s-app: ${autoscaler_name}
 type: Opaque
 data:
   config.json: ${cluster_config}
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cluster-autoscaler
+  name: ${autoscaler_name}
   namespace: kube-system
   labels:
-    app: cluster-autoscaler
+    app: ${autoscaler_name}
 spec:
   replicas: ${ca_replicas}
   selector:
     matchLabels:
-      app: cluster-autoscaler
+      app: ${autoscaler_name}
   template:
     metadata:
       labels:
-        app: cluster-autoscaler
+        app: ${autoscaler_name}
       annotations:
         prometheus.io/scrape: 'true'
         prometheus.io/port: '8085'
-        # Rolling-restart trigger: when the cluster-autoscaler-config Secret
-        # content changes (new pool added, cloud-init updated, etc.), this
-        # checksum changes too → the pod template hash changes → Deployment
-        # rolls the pod automatically. Without this, the CA would keep running
-        # against the stale config until manually restarted, since it only
-        # reads HCLOUD_CLUSTER_CONFIG_FILE at startup.
         checksum/config: '${cluster_config_sha256}'
     spec:
-      serviceAccountName: cluster-autoscaler
+      serviceAccountName: ${autoscaler_name}
       tolerations:
         - effect: NoSchedule
           key: node-role.kubernetes.io/control-plane
+        %{~ if length(cluster_autoscaler_tolerations) > 0 ~}
+${indent(8, yamlencode(cluster_autoscaler_tolerations))}
+        %{~ endif ~}
 
       # Node affinity is used to force cluster-autoscaler to stick
       # to the control-plane node. This allows the cluster to reliably downscale
@@ -202,12 +211,14 @@ spec:
             - --logtostderr=${cluster_autoscaler_log_to_stderr}
             - --stderrthreshold=${cluster_autoscaler_stderr_threshold}
             - --cloud-provider=hetzner
+            - --leader-elect-resource-name=${leader_election_resource_name}
+            - --status-config-map-name=${autoscaler_name}-status
             %{~ for pool in node_pools ~}
             - --nodes=${pool.min_nodes}:${pool.max_nodes}:${pool.server_type}:${pool.location}:${cluster_name}${pool.name}
             %{~ endfor ~}
-            %{~ for extra_arg in cluster_autoscaler_extra_args ~}
-            - ${extra_arg}
-            %{~ endfor ~}
+            %{~ if trimspace(cluster_autoscaler_extra_args_yaml) != "[]" ~}
+            ${replace(trimspace(cluster_autoscaler_extra_args_yaml), "\n", "\n            ")}
+            %{~ endif ~}
           env:
           - name: HCLOUD_TOKEN
             valueFrom:
@@ -216,10 +227,6 @@ spec:
                   key: token
           - name: HCLOUD_CLOUD_INIT
             value: ${cloudinit_config}
-          # HCLOUD_CLUSTER_CONFIG_FILE instead of HCLOUD_CLUSTER_CONFIG (env var):
-          # bypasses the Linux MAX_ARG_STRLEN limit (128 KB), so the number of
-          # autoscaler nodepools is no longer constrained by env-var size.
-          # See the cluster-autoscaler-config Secret above.
           - name: HCLOUD_CLUSTER_CONFIG_FILE
             value: /etc/hetzner-autoscaler/config.json
           - name: HCLOUD_SSH_KEY
@@ -239,20 +246,14 @@ spec:
             value: '${cluster_autoscaler_server_creation_timeout}'
           %{~ endif ~}
           volumeMounts:
-            - name: ssl-certs
-              mountPath: /etc/ssl/certs
-              readOnly: true
             - name: cluster-config
               mountPath: /etc/hetzner-autoscaler
               readOnly: true
           imagePullPolicy: "Always"
       volumes:
-        - name: ssl-certs
-          hostPath:
-            path: "/etc/ssl/certs" # right place on MicroOS?
         - name: cluster-config
           secret:
-            secretName: cluster-autoscaler-config
+            secretName: ${autoscaler_name}-config
             items:
               - key: config.json
                 path: config.json

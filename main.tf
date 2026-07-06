@@ -3,44 +3,10 @@ resource "random_password" "k3s_token" {
   special = false
 }
 
-locals {
-  microos_nodepool_server_types = concat(
-    [for node in values(local.control_plane_nodes) : node.server_type],
-    [for node in values(local.agent_nodes) : node.server_type],
-    [for nodepool in var.autoscaler_nodepools : nodepool.server_type],
-  )
-
-  uses_microos_arm_snapshot = length([
-    for server_type in local.microos_nodepool_server_types : server_type
-    if substr(server_type, 0, 3) == "cax"
-  ]) > 0
-
-  uses_microos_x86_snapshot = length([
-    for server_type in local.microos_nodepool_server_types : server_type
-    if substr(server_type, 0, 3) != "cax"
-  ]) > 0
-
-  microos_x86_snapshot_id = var.microos_x86_snapshot_id != "" ? var.microos_x86_snapshot_id : (
-    join("", data.hcloud_image.microos_x86_snapshot[*].id)
-  )
-
-  microos_arm_snapshot_id = var.microos_arm_snapshot_id != "" ? var.microos_arm_snapshot_id : (
-    join("", data.hcloud_image.microos_arm_snapshot[*].id)
-  )
-}
-
-data "hcloud_image" "microos_x86_snapshot" {
-  count             = var.microos_x86_snapshot_id == "" && local.uses_microos_x86_snapshot ? 1 : 0
-  with_selector     = "microos-snapshot=yes"
-  with_architecture = "x86"
-  most_recent       = true
-}
-
-data "hcloud_image" "microos_arm_snapshot" {
-  count             = var.microos_arm_snapshot_id == "" && local.uses_microos_arm_snapshot ? 1 : 0
-  with_selector     = "microos-snapshot=yes"
-  with_architecture = "arm"
-  most_recent       = true
+resource "random_password" "secrets_encryption_key" {
+  count   = var.enable_secrets_encryption ? 1 : 0
+  length  = 32
+  special = false
 }
 
 resource "hcloud_ssh_key" "k3s" {
@@ -55,31 +21,33 @@ resource "hcloud_network" "k3s" {
   name                     = var.cluster_name
   ip_range                 = var.network_ipv4_cidr
   labels                   = local.labels
-  expose_routes_to_vswitch = var.vswitch_id != null
+  expose_routes_to_vswitch = var.vswitch_id != null && var.expose_routes_to_vswitch
 }
 
 data "hcloud_network" "k3s" {
-  id = local.use_existing_network ? var.existing_network_id[0] : hcloud_network.k3s[0].id
+  id = local.use_existing_network ? var.existing_network.id : hcloud_network.k3s[0].id
+}
+
+data "hcloud_network" "additional_nodepool_networks" {
+  for_each = local.nodepool_network_refs
+  id       = each.value == 0 ? data.hcloud_network.k3s.id : each.value
 }
 
 
-# We start from the end of the subnets cidr array,
-# as we would have fewer control plane nodepools, than agent ones.
 resource "hcloud_network_subnet" "control_plane" {
-  count        = length(var.control_plane_nodepools)
+  count        = local.use_per_nodepool_subnets ? length(var.control_plane_nodepools) : 1
   network_id   = data.hcloud_network.k3s.id
   type         = "cloud"
   network_zone = var.network_region
-  ip_range     = local.network_ipv4_subnets[var.subnet_amount - 1 - count.index]
+  ip_range     = local.use_per_nodepool_subnets ? local.network_ipv4_subnets[var.subnet_count - 1 - count.index] : local.network_ipv4_subnets[var.subnet_count - 1]
 }
 
-# Here we start at the beginning of the subnets cidr array
 resource "hcloud_network_subnet" "agent" {
-  count        = length(var.agent_nodepools)
+  count        = local.use_per_nodepool_subnets ? length(var.agent_nodepools) : 1
   network_id   = data.hcloud_network.k3s.id
   type         = "cloud"
   network_zone = var.network_region
-  ip_range     = coalesce(var.agent_nodepools[count.index].subnet_ip_range, local.network_ipv4_subnets[count.index])
+  ip_range     = local.use_per_nodepool_subnets ? coalesce(var.agent_nodepools[count.index].subnet_ip_range, local.network_ipv4_subnets[count.index]) : local.network_ipv4_subnets[0]
 }
 
 # Subnet for NAT router and other peripherals
@@ -114,6 +82,13 @@ resource "hcloud_firewall" "k3s" {
       port            = lookup(rule.value, "port", null)
       destination_ips = lookup(rule.value, "destination_ips", [])
       source_ips      = lookup(rule.value, "source_ips", [])
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !local.is_ref_myipv4_used || local.my_public_ipv4_cidr != null
+      error_message = "Unable to resolve 'myipv4' to a valid public IPv4 address from https://ipv4.icanhazip.com."
     }
   }
 }

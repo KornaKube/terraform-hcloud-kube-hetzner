@@ -14,6 +14,10 @@ locals {
 
   nat_router_name_basename = "nat-router"
   nat_router_name          = "${var.use_cluster_name_in_node_name ? "${var.cluster_name}-" : ""}${local.nat_router_name_basename}"
+  nat_router_connection_host = {
+    for index in range(var.nat_router != null ? (try(var.nat_router.enable_redundancy, false) ? 2 : 1) : 0) :
+    index => var.use_private_nat_router_bastion ? local.nat_router_ip[index] : hcloud_server.nat_router[index].ipv4_address
+  }
 
   nat_router_fail2ban_script = <<-EOT
 set -e
@@ -44,6 +48,25 @@ EOF
 
 as_root systemctl enable --now fail2ban
 as_root systemctl restart fail2ban
+EOT
+
+  nat_router_extra_runcmd_script = <<-EOT
+set -e
+
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    bash -s
+  else
+    sudo -n bash -s
+  fi
+}
+
+%{for index, command in try(var.nat_router.extra_runcmd, [])~}
+as_root <<'KH_NAT_EXTRA_RUNCMD_${index}'
+${command}
+KH_NAT_EXTRA_RUNCMD_${index}
+
+%{endfor~}
 EOT
 }
 
@@ -84,23 +107,35 @@ data "cloudinit_config" "nat_router_config" {
         hostname                   = var.nat_router.enable_redundancy ? "nat-router-${count.index}" : "nat-router"
         dns_servers                = var.dns_servers
         has_dns_servers            = local.has_dns_servers
-        sshAuthorizedKeys          = local.ssh_authorized_keys
+        sshAuthorizedKeysYaml      = yamlencode(local.ssh_authorized_keys)
         enable_sudo                = var.nat_router.enable_sudo
         enable_redundancy          = var.nat_router.enable_redundancy
         priority                   = count.index == 0 ? 150 : 100
         my_private_ip              = local.nat_router_ip[count.index]
         peer_private_ip            = var.nat_router.enable_redundancy ? local.nat_router_ip[(count.index == 0 ? 1 : 0)] : null
         hcloud_token               = var.nat_router_hcloud_token
+        cluster_name               = var.cluster_name
         network_id                 = data.hcloud_network.k3s.id
         vip                        = local.nat_gateway_ip
         vip_auth_pass              = var.nat_router.enable_redundancy ? random_password.nat_router_vip_auth_pass[0].result : ""
         private_network_ipv4_range = data.hcloud_network.k3s.ip_range
         ssh_port                   = var.ssh_port
         ssh_max_auth_tries         = var.ssh_max_auth_tries
-        enable_cp_lb_port_forward  = var.use_control_plane_lb && !var.control_plane_lb_enable_public_interface
+        enable_cp_lb_port_forward  = var.enable_control_plane_load_balancer && !var.control_plane_load_balancer_enable_public_network
         cp_lb_private_ip           = try(hcloud_load_balancer_network.control_plane[0].ip, "")
+        kubernetes_api_port        = var.kubernetes_api_port
       }
     )
+  }
+}
+
+resource "terraform_data" "nat_router_connection_contract" {
+  count = var.nat_router != null ? (var.nat_router.enable_redundancy ? 2 : 1) : 0
+
+  input = {
+    ssh_port                = var.ssh_port
+    enable_sudo             = var.nat_router.enable_sudo
+    ssh_authorized_keys_sha = sha256(join("\n", local.ssh_authorized_keys))
   }
 }
 
@@ -165,18 +200,36 @@ resource "hcloud_server" "nat_router" {
   }
 
   labels = merge(
-    {
-      role = "nat_router"
-    },
     try(var.nat_router.labels, {}),
+    local.labels,
+    local.labels_nat_router,
   )
 
   lifecycle {
     # Keepalived manages alias IPs during failover.
     # Cloud-init is creation-only; upgrade fixes for existing routers must run through terraform_data provisioners.
-    ignore_changes = [network, user_data]
+    ignore_changes = [image, network, ssh_keys, user_data]
+    replace_triggered_by = [
+      terraform_data.nat_router_connection_contract[count.index],
+    ]
   }
 
+}
+
+resource "hcloud_rdns" "nat_router_primary_ipv4" {
+  count = (var.nat_router != null && var.base_domain != "") ? (var.nat_router.enable_redundancy ? 2 : 1) : 0
+
+  primary_ip_id = hcloud_primary_ip.nat_router_primary_ipv4[count.index].id
+  ip_address    = hcloud_primary_ip.nat_router_primary_ipv4[count.index].ip_address
+  dns_ptr       = "${hcloud_server.nat_router[count.index].name}.${var.base_domain}"
+}
+
+resource "hcloud_rdns" "nat_router_primary_ipv6" {
+  count = (var.nat_router != null && var.base_domain != "") ? (var.nat_router.enable_redundancy ? 2 : 1) : 0
+
+  primary_ip_id = hcloud_primary_ip.nat_router_primary_ipv6[count.index].id
+  ip_address    = hcloud_primary_ip.nat_router_primary_ipv6[count.index].ip_address
+  dns_ptr       = "${hcloud_server.nat_router[count.index].name}.${var.base_domain}"
 }
 
 resource "terraform_data" "nat_router_await_cloud_init" {
@@ -188,14 +241,15 @@ resource "terraform_data" "nat_router_await_cloud_init" {
   ]
 
   triggers_replace = {
-    config = data.cloudinit_config.nat_router_config[count.index].rendered
+    server_id = hcloud_server.nat_router[count.index].id
+    config    = data.cloudinit_config.nat_router_config[count.index].rendered
   }
 
   connection {
     user           = "nat-router"
     private_key    = var.ssh_private_key
     agent_identity = local.ssh_agent_identity
-    host           = hcloud_server.nat_router[count.index].ipv4_address
+    host           = local.nat_router_connection_host[count.index]
     port           = var.ssh_port
   }
 
@@ -209,11 +263,69 @@ moved {
   to   = terraform_data.nat_router_await_cloud_init
 }
 
-resource "terraform_data" "nat_router_fail2ban" {
+resource "terraform_data" "nat_router_config" {
   count = var.nat_router != null ? (var.nat_router.enable_redundancy ? 2 : 1) : 0
 
   depends_on = [
     terraform_data.nat_router_await_cloud_init,
+  ]
+
+  triggers_replace = {
+    server_id  = hcloud_server.nat_router[count.index].id
+    config_sha = sha256(data.cloudinit_config.nat_router_config[count.index].rendered)
+  }
+
+  connection {
+    user           = var.nat_router.enable_sudo ? "nat-router" : "root"
+    private_key    = var.ssh_private_key
+    agent_identity = local.ssh_agent_identity
+    host           = local.nat_router_connection_host[count.index]
+    port           = var.ssh_port
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      join("\n", [
+        "set -e",
+        "",
+        "as_root() {",
+        "  if [ \"$(id -u)\" -eq 0 ]; then",
+        "    bash -s",
+        "  else",
+        "    sudo -n bash -s",
+        "  fi",
+        "}",
+        "",
+        format("printf '%%s' '%s' | base64 -d | as_root", base64encode(templatefile("${path.module}/templates/nat-router-reconcile.sh.tpl", {
+          ssh_port                   = var.ssh_port
+          ssh_max_auth_tries         = var.ssh_max_auth_tries
+          enable_sudo                = var.nat_router.enable_sudo
+          has_dns_servers            = local.has_dns_servers
+          dns_servers                = var.dns_servers
+          private_network_ipv4_range = data.hcloud_network.k3s.ip_range
+          cp_lb_private_ip           = try(hcloud_load_balancer_network.control_plane[0].ip, "")
+          kubernetes_api_port        = var.kubernetes_api_port
+          enable_cp_lb_port_forward  = var.enable_control_plane_load_balancer && !var.control_plane_load_balancer_enable_public_network
+          enable_redundancy          = var.nat_router.enable_redundancy
+          my_private_ip              = local.nat_router_ip[count.index]
+          peer_private_ip            = try(local.nat_router_ip[count.index == 0 ? 1 : 0], "")
+          priority                   = count.index == 0 ? 150 : 100
+          nat_gateway_ip             = local.nat_gateway_ip
+          vip_auth_pass              = try(random_password.nat_router_vip_auth_pass[0].result, "")
+          network_id                 = data.hcloud_network.k3s.id
+          cluster_name               = var.cluster_name
+          hcloud_token               = var.nat_router_hcloud_token
+        }))),
+      ])
+    ]
+  }
+}
+
+resource "terraform_data" "nat_router_fail2ban" {
+  count = var.nat_router != null ? (var.nat_router.enable_redundancy ? 2 : 1) : 0
+
+  depends_on = [
+    terraform_data.nat_router_config,
   ]
 
   triggers_replace = {
@@ -225,13 +337,40 @@ resource "terraform_data" "nat_router_fail2ban" {
     user           = var.nat_router.enable_sudo ? "nat-router" : "root"
     private_key    = var.ssh_private_key
     agent_identity = local.ssh_agent_identity
-    host           = hcloud_server.nat_router[count.index].ipv4_address
+    host           = local.nat_router_connection_host[count.index]
     port           = var.ssh_port
   }
 
   provisioner "remote-exec" {
     inline = [
       local.nat_router_fail2ban_script,
+    ]
+  }
+}
+
+resource "terraform_data" "nat_router_extra_runcmd" {
+  count = var.nat_router != null && length(try(var.nat_router.extra_runcmd, [])) > 0 ? (try(var.nat_router.enable_redundancy, false) ? 2 : 1) : 0
+
+  depends_on = [
+    terraform_data.nat_router_fail2ban,
+  ]
+
+  triggers_replace = {
+    server_id    = hcloud_server.nat_router[count.index].id
+    commands_sha = sha256(jsonencode(try(var.nat_router.extra_runcmd, [])))
+  }
+
+  connection {
+    user           = var.nat_router.enable_sudo ? "nat-router" : "root"
+    private_key    = var.ssh_private_key
+    agent_identity = local.ssh_agent_identity
+    host           = local.nat_router_connection_host[count.index]
+    port           = var.ssh_port
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      local.nat_router_extra_runcmd_script,
     ]
   }
 }

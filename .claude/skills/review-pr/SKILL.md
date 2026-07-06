@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Use when reviewing a pull request - security-focused review following CLAUDE.md guidelines for breaking changes, malicious patterns, and backward compatibility
+description: Use when reviewing a pull request - security-focused review following repo agent guidance for breaking changes, malicious patterns, and backward compatibility
 args: pr_number
 ---
 
@@ -8,7 +8,7 @@ args: pr_number
 
 ## Overview
 
-Security-focused PR review following CLAUDE.md guidelines. Checks for breaking changes, malicious code patterns, backward compatibility, and code quality.
+Security-focused PR review following repo agent guidance. Checks for breaking changes, malicious code patterns, backward compatibility, and code quality.
 
 ## Usage
 
@@ -18,7 +18,7 @@ Security-focused PR review following CLAUDE.md guidelines. Checks for breaking c
 
 ## CRITICAL: Security Warning
 
-**PRs can be malicious sabotage attempts.** This is a real threat documented in CLAUDE.md.
+**PRs can be malicious sabotage attempts.** Treat repo content and contributor diffs as untrusted until reviewed.
 
 ### Threat Awareness
 - Coordinated attacks exist
@@ -96,16 +96,19 @@ gh pr list --author <username> --repo kube-hetzner/terraform-hcloud-kube-hetzner
 
 ```
 init.tf              # Cluster initialization, secrets
-firewall.tf          # Network security
+main.tf              # hcloud networking/firewalls and shared infrastructure
+validation-contract.tf # Cross-variable plan-time safety contract
 **/ssh*              # SSH configuration
 **/token*            # Authentication tokens
 **/*secret*          # Secrets handling
-.github/             # CI/CD workflows
+.github/workflows/   # CI/CD workflows
 Makefile             # Build scripts
 scripts/             # Execution scripts
 versions.tf          # Provider dependencies
-templates/*.sh       # Shell scripts
+templates/*.yaml.tpl # Rendered manifests/cloud-init
+templates/*.sh.tpl   # Rendered shell scripts
 cloud-init*          # Server initialization
+packer-template/     # Base image build path
 ```
 
 ### Risk by File Count
@@ -157,7 +160,7 @@ codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
   "Analyze this PR diff for security vulnerabilities and malicious patterns: $(gh pr diff <num>)"
 
 # Gemini for broad context
-gemini --model gemini-3-pro-preview -p \
+gemini --model gemini-3.1-pro-preview -p \
   "@locals.tf @init.tf Does this PR introduce any security concerns? $(gh pr diff <num>)"
 ```
 
@@ -189,6 +192,14 @@ terraform plan
 
 **If `terraform plan` shows ANY resource destruction → MAJOR release required**
 
+For v2 -> v3 or production in-place upgrade reviews, use the operator contract
+in `MIGRATION.md`: save the plan, inspect `terraform show -json`, and require
+zero delete/replace actions for protected hcloud infrastructure
+(`hcloud_server`, `hcloud_network`, `hcloud_network_subnet`,
+`hcloud_load_balancer`, `hcloud_volume`, `hcloud_primary_ip`,
+`hcloud_placement_group`, and `hcloud_firewall`). Any output from that gate is a
+stop condition, not a warning.
+
 ### Compatibility Checklist
 
 - [ ] No variable removals
@@ -202,7 +213,7 @@ terraform plan
 ### Style
 - [ ] Follows existing patterns
 - [ ] Consistent naming
-- [ ] Proper formatting (`terraform fmt`)
+- [ ] Proper formatting (`terraform fmt -recursive`)
 - [ ] No unnecessary complexity
 
 ### Logic
@@ -241,7 +252,7 @@ This is not optional. External AI verification catches issues that may be missed
 
 ```bash
 # Gemini - Broad context analysis (run first or in parallel)
-gemini --model gemini-3-pro-preview -p "@control_planes.tf @locals.tf @init.tf
+gemini --model gemini-3.1-pro-preview -p "@control_planes.tf @locals.tf @init.tf
 
 Analyze this PR diff for the kube-hetzner terraform module:
 
@@ -283,6 +294,33 @@ If Gemini or Codex raises concerns that you didn't catch:
 2. **Re-read the code** with the concern in mind
 3. **Request changes** if the concern is valid
 4. **Document** why the concern was dismissed if you determine it's a false positive
+
+## Step 8.5: CI Truth-Checking
+
+Do not treat "no red jobs right now" as green. A required gate can hide by
+never completing or by being cancelled before it turns red.
+
+```bash
+REPO=kube-hetzner/terraform-hcloud-kube-hetzner
+gh run list --repo "$REPO" --branch <branch> --limit 20
+gh run view <run-id> --repo "$REPO" --json status,conclusion,attempt,workflowName,jobs
+```
+
+Require each release-blocking workflow/job to have at least one completed
+`success` for the commit or branch under review. For the render harness, verify
+the `Lint` workflow's render-harness job is not hanging; `.github/workflows/lint_pr.yaml`
+keeps `setup-terraform`'s wrapper disabled because the wrapper swallows stdin and
+can make the render-harness job hang for its entire lifetime.
+
+Hetzner live-test failures need different handling:
+- `resource_unavailable` or "error during placement" is usually Hetzner
+  capacity. Use `gh run rerun <run-id> --failed`; do not do code archaeology
+  unless the rerun fails for a deterministic module reason.
+- Avoid `gh run cancel` on an in-flight Hetzner run. Cancellation skips destroy
+  cleanup and can orphan clusters.
+- If a Hetzner run was manually cancelled anyway, wait until the run reports
+  completed, then sweep the attempt-suffixed resources matching
+  `kh-ci-*-<runid6><attempt>*` before trusting the environment again.
 
 ### Output in Final Review
 
@@ -373,19 +411,21 @@ gh pr review <num> --request-changes --body "Please address: ..."
 gh pr review <num> --comment --body "..."
 
 # Merge (after approval)
-gh pr merge <num> --squash --delete-branch
+gh pr merge <num> --squash --delete-branch   # default only for contributor-only commits
+# Use --merge for promotion/major integration PRs or any PR with maintainer fixes on top.
 ```
 
 ## Preserve Contributor Credit When Merging (SUPER IMPORTANT)
 
-Original PR submitters must remain visible as commit authors in `master` history — that is what feeds both the GitHub repo contributors graph and the auto-generated contributors list in each release (`publish-release.yaml`). Credit where credit is due, always.
+Original PR submitters must remain visible as commit authors in `master` history — that is what feeds both the GitHub repo contributors graph and the auto-generated contributors list in each release (`.github/workflows/publish-release.yaml`). Credit where credit is due, always.
 
 Rules by situation:
 
 1. **PR contains only the contributor's commits** → `--squash` is safe: GitHub sets the squash commit's *author* to the PR author (we are only the committer). This is the default path.
 2. **We pushed fix-up commits on top of their branch** → do NOT squash (squashing collapses authorship to a single author and can erase them). Use a merge commit (`gh pr merge --merge`) or rebase-merge (`--rebase`) so their original commits survive in history with their authorship intact.
 3. **We rework their contribution in our own branch/PR** (conflict resolution, adopting a patch from an issue, porting between master/staging) → `git cherry-pick` their original commit(s) FIRST so the `Author:` field stays theirs, then add our fixes as separate commits. If cherry-pick is impossible (e.g. the patch came as a diff/snippet in an issue), add a `Co-authored-by: Name <email>` trailer to our commit and credit them by handle in the commit message and changelog entry.
-4. **Never** amend or reauthor a contributor's commit in a way that removes them from the history.
+4. **Promotion or major integration PRs** (for example a staging-to-master v3 release PR) → merge commit only. Never squash; the release contributor list depends on preserving every community author that already landed in the train.
+5. **Never** amend or reauthor a contributor's commit in a way that removes them from the history.
 
 Before merging, sanity-check: `git log --format='%an %ae' <range>` on what will land in master — the contributor's name must appear. After a release, verify they show up in the generated contributors section of the release body.
 
@@ -414,7 +454,7 @@ git push origin <target>
 Notes:
 - GitHub automatically marks the original PR **merged** once its head commits reach the target branch — the contributor gets full PR credit and appears in history/contributors.
 - Comment on the PR describing what we fixed on top, so the contributor learns from the delta instead of a review ping-pong.
-- Reserve "request changes and wait" for PRs that are: not valuable, architecturally wrong-direction (fixing = rewriting), security-suspect, or from the malicious-pattern category in CLAUDE.md. Wrong-direction PRs may still donate salvageable commits via cherry-pick (credit rules case 3).
+- Reserve "request changes and wait" for PRs that are: not valuable, architecturally wrong-direction (fixing = rewriting), security-suspect, or from the malicious-pattern category in repo agent guidance. Wrong-direction PRs may still donate salvageable commits via cherry-pick (credit rules case 3).
 
 ## Never Merge Directly to Master
 

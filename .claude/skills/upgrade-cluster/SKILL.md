@@ -1,6 +1,6 @@
 ---
 name: upgrade-cluster
-description: Use when upgrading or hardening an existing kube-hetzner cluster, including module version bumps, provider lockfile refreshes, K3s channel/version upgrades, immutable node replacement, system-upgrade-controller changes, or live cluster rollout validation
+description: Use when upgrading or hardening an existing kube-hetzner cluster, including module version bumps, provider lockfile refreshes, k3s/RKE2 channel/version upgrades, immutable node replacement, system-upgrade-controller changes, or live cluster rollout validation
 ---
 
 # Upgrade Kube-Hetzner Cluster
@@ -11,7 +11,7 @@ Safely upgrade an existing kube-hetzner-managed cluster with Terraform/OpenTofu 
 
 - A user asks to upgrade a live kube-hetzner cluster.
 - A module version bump must be applied to an existing cluster.
-- K3s should move to a newer channel or explicit version.
+- k3s or RKE2 should move to a newer channel or explicit version.
 - Provider/module state must be reconciled without recreating live nodes.
 - The user asks whether the cluster is HA before or during an upgrade.
 - The user wants to replace nodes because of suspected compromise, malware, bad host state, server type deprecation, or architecture/capacity migration.
@@ -21,8 +21,8 @@ Safely upgrade an existing kube-hetzner-managed cluster with Terraform/OpenTofu 
 - Do not print or commit secrets. Never commit kubeconfigs, `*.tfstate`, `*.tfvars`, local env files, plan files, or `.terraform/`.
 - Use the IaC runner already used by the target root. Examples below use `terraform`; substitute `tofu` only if the target root already uses OpenTofu.
 - Never let a module refactor recreate live servers, networks, load balancers, volumes, or primary IPs by accident. If a plan shows replacement/destruction, stop and root-cause it.
-- Upgrade module convergence and K3s versions as separate phases.
-- Upgrade K3s one minor at a time unless the operator has explicit upstream proof that skipping minors is safe for that exact version span.
+- Upgrade module convergence and Kubernetes runtime versions as separate phases.
+- Upgrade k3s/RKE2 one minor at a time unless the operator has explicit upstream proof that skipping minors is safe for that exact version span.
 - If host compromise or malware is in scope, prefer immutable node replacement over in-place package updates or reboots. Updates patch software; fresh nodes remove old-host persistence.
 - Respect kube-hetzner nodepool lifecycle rules: only add/remove nodepools at the end of each list, set old pools to `count = 0` before retiring them, do not rename a non-zero pool, and keep the first control-plane nodepool at count >= 1 unless the module/root has deliberately modeled a safe replacement topology.
 - Do not use `k3s server --cluster-reset` during healthy quorum replacement. It is a lost-quorum disaster recovery tool, not a normal control-plane migration primitive.
@@ -33,7 +33,7 @@ Safely upgrade an existing kube-hetzner-managed cluster with Terraform/OpenTofu 
 
 - Terraform root path and backend type.
 - Current module source/version and target module version/commit.
-- Current K3s node versions and target channel/version.
+- Current `kubernetes_distribution`, node versions, and target channel/version.
 - Kubeconfig/API access path.
 - Cluster topology: control-plane count, etcd membership, agent pools, autoscaler pools, ingress/load balancer.
 - HA risks: singleton StatefulSets, attached volumes, PodDisruptionBudgets, critical workloads without replicas.
@@ -107,6 +107,30 @@ Review the plan before applying.
 
 Proceed only if the plan is explainable and does not unexpectedly destroy or replace live infrastructure.
 
+For production in-place upgrades, `MIGRATION.md` is the safety contract. Save the
+plan JSON and run the protected hcloud no-destroy gate before applying:
+
+```bash
+terraform show -json module-upgrade.tfplan \
+  | jq -r '
+      .resource_changes[]?
+      | select(.type as $type | [
+          "hcloud_server",
+          "hcloud_network",
+          "hcloud_network_subnet",
+          "hcloud_load_balancer",
+          "hcloud_volume",
+          "hcloud_primary_ip",
+          "hcloud_placement_group",
+          "hcloud_firewall"
+        ] | index($type))
+      | select(.change.actions | index("delete"))
+      | "\(.address): \(.type) \(.change.actions | join(","))"
+    '
+```
+
+Any output is a stop condition. Root-cause it before apply.
+
 ```bash
 terraform apply -input=false -parallelism=1 module-upgrade.tfplan
 terraform plan -input=false -parallelism=1 -detailed-exitcode
@@ -145,7 +169,7 @@ kubectl --kubeconfig <kubeconfig> get nodes -o wide
 kubectl --kubeconfig <kubeconfig> get --raw='/readyz?verbose'
 ```
 
-## Phase 2: K3s Upgrade
+## Phase 2: Kubernetes Runtime Upgrade
 
 Determine current and target minors:
 
@@ -155,7 +179,9 @@ kubectl --kubeconfig <kubeconfig> get nodes -o wide
 
 For each minor step:
 
-1. Update `initial_k3s_channel` or `install_k3s_version`.
+1. Keep `kubernetes_distribution` stable unless the operator is explicitly
+   rebuilding/migrating runtime. For k3s, update `k3s_channel` or
+   `k3s_version`; for RKE2, update `rke2_channel` or `rke2_version`.
 2. Keep upgrade drain/eviction settings aligned with the HA risk assessment.
 3. Plan and apply serially.
 4. Wait for system-upgrade plans and nodes.
@@ -164,8 +190,8 @@ For each minor step:
 ```bash
 terraform fmt -check -diff
 terraform validate
-terraform plan -input=false -parallelism=1 -out=k3s-<target-minor>.tfplan
-terraform apply -input=false -parallelism=1 k3s-<target-minor>.tfplan
+terraform plan -input=false -parallelism=1 -out=kubernetes-<target-minor>.tfplan
+terraform apply -input=false -parallelism=1 kubernetes-<target-minor>.tfplan
 
 kubectl --kubeconfig <kubeconfig> -n system-upgrade get plans,jobs,pods -o wide
 kubectl --kubeconfig <kubeconfig> get nodes -o wide
@@ -180,6 +206,11 @@ Treat these as stop conditions:
 - Terraform shows unexpected drift.
 - Public ingress or application readiness fails repeatedly.
 - A singleton stateful workload is stuck on volume attach/detach or unavailable.
+
+RKE2 no longer implies an 8GB control-plane floor. The v3 size-aware kubelet
+reservation defaults make 4GB `cx23` control planes viable for RKE2, and that
+shape is live-proven in CI. Still size real production pools for workload and
+etcd headroom, not just module minimums.
 
 ## Phase 3: Immutable Node Replacement
 
@@ -280,6 +311,15 @@ done
 
 Old `system-upgrade` pods may show `Unknown` after node restarts while their jobs are `Complete`. Treat that as cleanup noise only if the plans are complete, all nodes are ready, and workloads are healthy.
 
+## SELinux Denials
+
+If workloads fail under enforcing SELinux, do not globally disable SELinux as a
+first response. Follow `docs/selinux.md`: collect AVC lines from audit logs,
+confirm the workload name/version and k3s/RKE2 distribution, try a udica-derived
+workload policy first, and propose upstream module policy only with reproducible
+AVC evidence. Use per-pool `selinux = false` only as the last resort for a
+specific nodepool that cannot run under policy.
+
 ## Firewall Closure Proof
 
 If SSH/API access was opened for the run, close it in its own final Terraform plan after cluster health is proven.
@@ -298,12 +338,25 @@ Then verify:
 - Public `kubectl` from the closed source fails or times out, unless the cluster intentionally exposes the API through a control-plane LB.
 - Public ingress/application readiness still succeeds.
 
+## Destroy Or Abort Cleanup
+
+If an upgrade exercise is on a disposable cluster and must be torn down, run
+`scripts/destroy.sh` from the Terraform root. It auto-retries only the known
+benign ingress-LB detach race and then prints a read-only orphan report. Use
+`scripts/cleanup.sh` only as the forceful fallback when state is already broken
+or the report identifies leftovers.
+
+Autoscaler-created servers are outside Terraform state. If they pin
+network/subnet deletion, delete them only after the control plane is dead, or
+first scale the autoscaler pool to `min_nodes = 0`; deleting them earlier while
+Cluster Autoscaler is alive can recreate them.
+
 ## Final Report
 
 Report:
 
 - Module version/source before and after.
-- K3s version/channel before and after.
+- Kubernetes distribution and version/channel before and after.
 - HA assessment: control plane/etcd count, agent pools, ingress replicas, application replicas, and singleton stateful risks.
 - Terraform proof: `fmt`, `validate`, final `plan -detailed-exitcode` result.
 - Kubernetes proof: node versions, upgrade plans complete, API readyz, deployments/statefulsets ready.

@@ -2,11 +2,41 @@ variable "name" {
   description = "Host name"
   type        = string
 }
-variable "microos_snapshot_id" {
-  description = "MicroOS snapshot ID to be used. Per default empty, an initial snapshot will be created"
+
+variable "append_random_suffix" {
+  description = "Whether to append a random suffix to the server name."
+  type        = bool
+  default     = true
+}
+
+variable "connection_host" {
+  description = "Optional SSH host override used for Terraform provisioners."
   type        = string
   default     = ""
 }
+
+variable "connection_host_suffix" {
+  description = "Optional DNS suffix appended to the final server name for Terraform provisioners, for example a Tailscale MagicDNS tailnet name."
+  type        = string
+  default     = ""
+}
+
+variable "node_connection_overrides" {
+  description = "Optional SSH host overrides keyed by node name (final or base name)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "os_snapshot_id" {
+  description = "OS snapshot ID to be used."
+  type        = string
+}
+
+variable "os" {
+  description = "Operating system used for the snapshot. Used to conditionally apply OS-specific cloud-init steps."
+  type        = string
+}
+
 variable "base_domain" {
   description = "Base domain used for reverse dns"
   type        = string
@@ -18,8 +48,16 @@ variable "ssh_port" {
 }
 
 variable "ssh_public_key" {
-  description = "SSH public Key"
+  description = "Single-line OpenSSH public key used for node access."
   type        = string
+
+  validation {
+    condition = can(regex(
+      "^(ssh-(rsa|ed25519)|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh.com) [A-Za-z0-9+/=]+( [^\\r\\n]*)?$",
+      trimspace(var.ssh_public_key)
+    ))
+    error_message = "ssh_public_key must be a single-line OpenSSH public key with a supported key type, base64 key body, and optional single-line comment."
+  }
 }
 
 variable "ssh_private_key" {
@@ -28,9 +66,27 @@ variable "ssh_private_key" {
 }
 
 variable "ssh_additional_public_keys" {
-  description = "Additional SSH public Keys. Use them to grant other team members root access to your cluster nodes"
+  description = "Additional single-line OpenSSH public keys. Use them to grant other team members root access to your cluster nodes."
   type        = list(string)
   default     = []
+
+  validation {
+    condition = alltrue([
+      for key in var.ssh_additional_public_keys :
+      trimspace(key) == "" || can(regex(
+        "^(ssh-(rsa|ed25519)|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh.com) [A-Za-z0-9+/=]+( [^\\r\\n]*)?$",
+        trimspace(key)
+      ))
+    ])
+    error_message = "ssh_additional_public_keys entries must be empty or single-line OpenSSH public keys with a supported key type, base64 key body, and optional single-line comment."
+  }
+}
+
+variable "ssh_authorized_keys_exclusive" {
+  description = "Whether to manage /root/.ssh/authorized_keys exclusively. The default false preserves unknown out-of-band keys while revoking module-managed keys removed from ssh_public_key or ssh_additional_public_keys. Set true to replace the file with only module-managed keys."
+  type        = bool
+  default     = false
+  nullable    = false
 }
 
 variable "ssh_keys" {
@@ -43,6 +99,12 @@ variable "firewall_ids" {
   description = "Set of firewall IDs"
   type        = set(number)
   nullable    = true
+}
+
+variable "extra_firewall_ids" {
+  description = "Additional firewall IDs to attach to the server."
+  type        = list(number)
+  default     = []
 }
 
 variable "placement_group_id" {
@@ -70,6 +132,7 @@ variable "ipv4_subnet_id" {
 variable "private_ipv4" {
   description = "Private IP for the server"
   type        = string
+  default     = null
 }
 
 variable "server_type" {
@@ -99,32 +162,32 @@ variable "automatically_upgrade_os" {
   default = true
 }
 
-variable "k3s_registries" {
+variable "registries_config" {
   default = ""
   type    = string
 }
 
-variable "k3s_registries_update_script" {
+variable "registries_update_script" {
   default = ""
   type    = string
 }
 
-variable "k3s_kubelet_config" {
+variable "kubelet_config" {
   default = ""
   type    = string
 }
 
-variable "k3s_kubelet_config_update_script" {
+variable "kubelet_config_update_script" {
   default = ""
   type    = string
 }
 
-variable "k3s_audit_policy_config" {
+variable "audit_policy_config" {
   description = "K3S audit-policy.yaml contents"
   type        = string
 }
 
-variable "k3s_audit_policy_update_script" {
+variable "audit_policy_update_script" {
   description = "Script to update audit policy configuration"
   type        = string
 }
@@ -137,6 +200,18 @@ variable "cloudinit_write_files_common" {
 variable "cloudinit_runcmd_common" {
   default = ""
   type    = string
+}
+
+variable "cloudinit_write_files_extra" {
+  type        = list(any)
+  default     = []
+  description = "Additional cloud-init write_files entries appended after module defaults."
+}
+
+variable "cloudinit_runcmd_extra" {
+  type        = list(any)
+  default     = []
+  description = "Additional cloud-init runcmd entries appended after module defaults."
 }
 
 variable "swap_size" {
@@ -177,10 +252,34 @@ variable "disable_ipv6" {
   description = "Whether to disable ipv4 on the server. If you disable ipv4 and ipv6 make sure you have an access to your private network."
 }
 
+variable "primary_ipv4_id" {
+  type        = number
+  default     = null
+  description = "Optional existing or module-managed Primary IPv4 ID to assign to the server."
+}
+
+variable "primary_ipv6_id" {
+  type        = number
+  default     = null
+  description = "Optional existing or module-managed Primary IPv6 ID to assign to the server."
+}
+
 variable "network_id" {
   type        = number
   default     = null
   description = "The network id to attach the server to."
+}
+
+variable "primary_network_key" {
+  type        = number
+  default     = 0
+  description = "Declared primary network identifier from nodepool config (0 means module-managed primary network). Used for deterministic filtering of extra networks."
+}
+
+variable "extra_network_ids" {
+  type        = list(number)
+  default     = []
+  description = "Additional network IDs to attach to the server."
 }
 
 variable "ssh_bastion" {

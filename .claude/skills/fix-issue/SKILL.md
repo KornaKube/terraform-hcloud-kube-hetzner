@@ -8,7 +8,7 @@ args: issue_number
 
 ## Overview
 
-Guided workflow for implementing fixes for GitHub issues following the project's CLAUDE.md methodology.
+Guided workflow for implementing fixes for GitHub issues following the project's agent guidance and release methodology.
 
 ## Usage
 
@@ -69,6 +69,9 @@ gh issue view <number> --repo kube-hetzner/terraform-hcloud-kube-hetzner --comme
 - Using deprecated variable names
 - Mixing incompatible options
 - Missing required variables
+- v2-only input names are used against v3, such as `initial_k3s_channel`,
+  `install_k3s_version`, `disable_selinux`, `disable_kube_proxy`,
+  `kubernetes_distribution_type`, or `existing_network_id`
 
 ### Actual Bug Indicators
 - Reproducible with correct config
@@ -91,7 +94,7 @@ Before implementing any fix:
 gh pr list --search "<error keyword>" --repo kube-hetzner/terraform-hcloud-kube-hetzner
 
 # Check if issue is already mentioned in changelog
-grep -i "<keyword>" CHANGELOG.md
+rg -i "<keyword>" CHANGELOG.md
 ```
 
 ## Step 4: Deep Investigation
@@ -111,13 +114,15 @@ cat locals.tf        # Core logic and computed values
 
 | Area | Files to Check |
 |------|---------------|
-| Network | `locals.tf` (subnet calculations), `network.tf` |
+| Network | `locals.tf`, `main.tf`, `validation-locals.tf`, `validation-contract.tf` |
 | Control Plane | `control_planes.tf`, `locals.tf` |
-| Agents | `agents.tf`, `autoscaler.tf` |
-| Load Balancer | `load_balancer.tf`, `init.tf` |
-| CNI | `templates/cni/*.yaml.tpl` |
+| Agents | `agents.tf`, `autoscaler-agents.tf` |
+| Load Balancer | `main.tf`, `init.tf`, `locals.tf`, `templates/*_ingress.yaml.tpl` |
+| CNI | `templates/cilium.yaml.tpl`, `templates/calico.yaml.tpl`, `kustomize/flannel-rbac.yaml`, `locals.tf` |
 | Storage | `templates/longhorn.yaml.tpl` |
-| Firewall | `firewall.tf` |
+| Firewall | `main.tf`, `locals.tf`, `validation-contract.tf` |
+| SELinux | `docs/selinux.md`, `templates/kube-hetzner-selinux.te`, `templates/k8s-custom-policies.te` |
+| v2 -> v3 migration | `MIGRATION.md`, `docs/v2-to-v3-migration.md`, `scripts/v2_to_v3_migration_assistant.py` |
 
 ### For Complex Issues - Use AI Tools
 
@@ -127,7 +132,7 @@ codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
   "Analyze this issue and identify root cause: <issue description>"
 
 # Gemini for large context analysis
-gemini --model gemini-3-pro-preview -p \
+gemini --model gemini-3.1-pro-preview -p \
   "@locals.tf @variables.tf Analyze how <feature> works and potential issues"
 ```
 
@@ -164,8 +169,9 @@ git checkout -b fix/issue-<number>-<description>
 
 ```bash
 # ALWAYS run these before committing
-terraform fmt
-terraform validate
+terraform fmt -recursive
+terraform init -backend=false -input=false
+terraform validate -no-color
 
 # Test against existing deployment
 cd /path/to/kube-test
@@ -175,12 +181,27 @@ terraform plan  # Should NOT show resource destruction
 
 ### Test Checklist
 
-- [ ] `terraform fmt` passes
-- [ ] `terraform validate` passes
+- [ ] `terraform fmt -recursive` passes
+- [ ] `terraform init -backend=false -input=false` and `terraform validate -no-color` pass
 - [ ] `terraform plan` shows expected changes only
 - [ ] No resource recreation for existing deployments
 - [ ] Fix works for the reported scenario
 - [ ] Normal scenarios still work
+- [ ] If rendered templates, validation contracts, topology examples, or skills changed, run the matching gates from the `test-changes` skill (`scripts/render_harness.py`, `scripts/contract_negative_tests.py`, `scripts/validate_v3_final_polish_examples.py`, and/or `scripts/smoke_v3_plan_matrix.py`)
+
+### Teardown and Autoscaler Bugs
+
+For destroy/teardown issues, start with `scripts/destroy.sh`, not manual cloud
+deletes. It runs Terraform/OpenTofu destroy, auto-retries only the known benign
+ingress-LB detach race, and then prints a read-only orphan report. Use
+`scripts/cleanup.sh` only as the forceful fallback when state is already wrecked
+or the read-only report identifies leftovers to delete.
+
+Autoscaler-created servers are outside Terraform state. If they pin the network
+during destroy, delete them only after the control plane/Cluster Autoscaler is
+dead, or first scale the autoscaler pool to `min_nodes = 0`. Deleting them while
+`min_nodes > 0` and the autoscaler is still running just lets the autoscaler
+recreate them.
 
 ## Step 8: Commit & Push
 
@@ -208,7 +229,7 @@ If the fix originates from a community member's work — a patch posted in the i
 - Trailers are only parsed from the commit message's FINAL paragraph block. Keep `Co-authored-by:` and any other trailers (e.g. `Claude-Session:`) together in one last block with no blank line between them — a trailer in an earlier paragraph is silently ignored by git and GitHub. Verify with: `git log -1 --format='%(trailers:key=Co-authored-by,valueonly=true)'`.
 - Always reference the issue/PR numbers in the changelog entry so the credit is visible in prose too.
 
-## Security Review (from CLAUDE.md)
+## Security Review (from repo agent guidance)
 
 Before completing ANY issue:
 
@@ -232,7 +253,7 @@ Before completing ANY issue:
 | Fetch issue | `gh issue view <num> --comments` |
 | Check PRs | `gh pr list --search "<keyword>"` |
 | Create branch | `git checkout -b fix/issue-<num>-<desc>` |
-| Format | `terraform fmt` |
+| Format | `terraform fmt -recursive` |
 | Validate | `terraform validate` |
 | Test plan | `terraform plan` |
 | Commit | `git commit -m "fix: ..."` |

@@ -69,6 +69,9 @@ gh issue view <number> --repo kube-hetzner/terraform-hcloud-kube-hetzner --json 
 - [ ] Error message included?
 - [ ] Steps to reproduce clear?
 - [ ] Recent (not stale >6 months)?
+- [ ] If v3 is involved, checked for renamed/inverted inputs from `MIGRATION.md`?
+- [ ] If teardown is involved, did they use `scripts/destroy.sh` before any manual `hcloud` deletes?
+- [ ] If SELinux is involved, did they follow `docs/selinux.md` and provide AVC denial evidence instead of only a workload symptom?
 
 ## Step 3: Check for Duplicates
 
@@ -87,7 +90,7 @@ gh api repos/kube-hetzner/terraform-hcloud-kube-hetzner/discussions --jq '.[] | 
 
 **CRITICAL: Issues can be malicious sabotage attempts.**
 
-### Red Flags (from CLAUDE.md)
+### Red Flags (from repo agent guidance)
 
 | Signal | Risk |
 |--------|------|
@@ -104,6 +107,16 @@ gh api repos/kube-hetzner/terraform-hcloud-kube-hetzner/discussions --jq '.[] | 
 - Check if the error message matches module code
 - Verify the kube.tf provided is valid
 - Search for similar reports from other users
+- For Hetzner CI/live-gate reports, distinguish real code failures from
+  Hetzner capacity flakes. `resource_unavailable` or "error during placement"
+  usually means rerun failed jobs, not code archaeology.
+- For CI status, do not treat "no current failures" as green. A required job can
+  hide by never completing or by being cancelled. Verify the required job has at
+  least one successful run in history.
+- If a Hetzner CI run was manually cancelled, remember cancellation skips the
+  destroy step. Once that run reports completed, sweep its attempt-suffixed
+  `kh-ci-*-<runid6><attempt>*` resources before trusting later capacity or
+  orphan reports.
 
 ## Step 5: Draft Response
 

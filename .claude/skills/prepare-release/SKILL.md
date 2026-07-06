@@ -52,12 +52,20 @@ Therefore:
 - If Karim asks for a tiny release-prep correction during release, commit and push it directly to `master`, then tag the resulting commit.
 - After a successful release, cut `CHANGELOG.md`: reset `## [Unreleased]` to an empty placeholder and move the released notes under `## [X.Y.Z] - YYYY-MM-DD`. Commit and push that cleanup directly to `master`.
 - Previous release notes must never remain under `## [Unreleased]`; otherwise the next tag workflow will publish stale notes again.
+- For v3-series releases, verify README's "What's New in v3" link still points
+  at the current release tag URL and the section matches the live release body.
+- After significant releases, regenerate the Custom GPT knowledge file and
+  confirm its `meta.version` matches the release before considering the release
+  train closed.
 
 ## Contributor Credit (SUPER IMPORTANT)
 
 The release's contributors list is generated from the commit authors that landed in `master` since the previous tag. Original PR submitters MUST appear there — credit where credit is due.
 
 - Upstream requirement (enforced at merge time, see the `review-pr` skill): community contributions keep the contributor as commit **author** in master history. Squash only when the PR contains solely their commits; use merge/rebase-merge when we pushed fixes on top; cherry-pick with preserved authorship or `Co-authored-by:` trailers when adopting their work into our own branches.
+- Promotion or major integration PRs, such as the v3 staging-to-master train,
+  must merge with a merge commit. Never squash those PRs; squashing erases the
+  per-commit community authors that feed the contributors list.
 - Pre-tag check: `git log <prev-tag>..HEAD --format='%an <%ae>' | sort -u` — every community contributor whose fix is in the release must be listed. If someone is missing, fix history/credit BEFORE tagging (after tagging it is public and immutable).
 - Post-release check: the `## 👥 Contributors` section of the live release body must include the original submitters, not just maintainers. If it does not, treat it as a release defect: edit the release body to add them and fix the crediting for next time.
 - Changelog entries for community fixes reference their PR/issue numbers so the human credit is also visible in prose.
@@ -107,7 +115,7 @@ git log $LATEST..HEAD --pretty=format:"- %s (%h)"
 Use Gemini for comprehensive analysis:
 
 ```bash
-gemini --model gemini-3-pro-preview -p \
+gemini --model gemini-3.1-pro-preview -p \
   "Analyze these git changes for a changelog. Categorize into: Features, Bug Fixes, Breaking Changes, Documentation. Ignore internal refactors.
 
 $(git log $LATEST..HEAD --oneline)
@@ -197,14 +205,13 @@ Check `versions.tf` for:
 
 If significant changes, regenerate the Custom GPT knowledge base:
 
-```bash
-# Run the knowledge generation script from CLAUDE.md
-python3 << 'PYEOF'
-# ... (script from CLAUDE.md)
-PYEOF
-```
+1. Use the maintained knowledge-generation workflow/artifact for this repo or
+   operator environment.
+2. Update the generated file's `meta.version` to the release being prepared.
+3. Re-open the generated artifact and verify the version plus the release's
+   major operational facts before upload.
 
-Update `meta.version` in the script to match new release.
+Do not invent a checked-in generator path if one is not present in the worktree.
 
 ## Step 6: Verify Release Notes Content
 
@@ -216,7 +223,66 @@ Preview exactly what the workflow will extract:
 awk '/^## \[Unreleased\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md
 ```
 
-If a separate `release-notes.md` exists in a future train, use it as a drafting aid, but copy the final release content into `CHANGELOG.md` under `## [Unreleased]` before tagging so the automation can consume it.
+If a separate release-notes file exists in a future train, use it as a drafting aid, but copy the final release content into `CHANGELOG.md` under `## [Unreleased]` before tagging so the automation can consume it.
+
+Before tagging a v3 release, run the local readiness gates:
+
+```bash
+terraform fmt -recursive
+terraform-docs markdown . > docs/terraform.md
+terraform init -backend=false -input=false
+terraform validate -no-color
+tmpdir="$(mktemp -d)"
+rsync -a --exclude .git --exclude .terraform --exclude .terraform-tofu ./ "$tmpdir"/
+(cd "$tmpdir" && tofu init -backend=false -input=false && tofu validate -no-color)
+rm -rf "$tmpdir"
+uv run scripts/validate_tailscale_large_scale_examples.py
+uv run scripts/validate_v3_final_polish_examples.py
+uv run scripts/smoke_v3_plan_matrix.py
+```
+
+Cross-variable and local-dependent module contract failures are hard
+`terraform_data.validation_contract` preconditions, so invalid-combination
+release gates must assert `terraform plan`; `terraform validate` only proves
+the module loads.
+
+Also verify `README.md`, `kube.tf.example`, `docs/llms.md`, and `.claude/skills/*/SKILL.md` do not contain removed v2 input names except in explicit migration sections.
+
+For v3 releases, verify README's "What's New in v3" release-tag URL points to
+the current tag and does not keep stale pre-release wording after the GitHub
+release exists.
+
+For v3, additionally verify the Tailscale node-transport surfaces stay aligned:
+`node_transport_mode = "tailscale"` is the supported secure single-network and
+private multinetwork path, Flannel is first supported, Cilium is experimental,
+Calico is rejected, subnet-route SNAT is disabled when advertising routes,
+single-network examples may disable node-private route advertisement, and
+active Tailscale agent/autoscaler nodepools set `network_scope` explicitly so
+same-root external Network IDs are validated during `terraform plan`,
+external-overlay docs still describe only user-owned operator
+access/post-bootstrap features.
+
+Also verify the final v3 topology polish surfaces stay aligned:
+`docs/v3-topology-recommendations.md`, `examples/cilium-gateway-api`,
+`examples/external-overlay-cloudflare-access`, `cilium_gateway_api_enabled`,
+`embedded_registry_mirror`, endpoint outputs,
+public join endpoint IPv6/no-public-host guards, OpenTofu/null-resource gates,
+and the large-scale Tailscale examples must all match `variables.tf`,
+`locals.tf`, `kube.tf.example`, and `docs/llms.md`.
+
+For Cloudflare, keep the release support boundary sharp: Access/Tunnel is a
+documented external access pattern for operator/app endpoints; kube-hetzner does
+not manage Cloudflare provider resources, and Cloudflare Mesh/WARP is not a v3
+node-transport support promise.
+
+For CI, require a completed success for every release-blocking workflow/job.
+"No failures" is not enough: a required gate can hide by hanging forever or by
+being cancelled before it reports red. Verify run/job history with `gh run
+list` and `gh run view`. If a Hetzner run fails with `resource_unavailable` or
+"error during placement", rerun failed jobs with `gh run rerun <run-id>
+--failed`. Avoid `gh run cancel` on in-flight Hetzner runs; cancellation skips
+destroy and can orphan `kh-ci-*-<runid6><attempt>*` resources that must be swept
+after the run reports completed.
 
 ### Release Notes Template
 
@@ -268,7 +334,7 @@ terraform apply
 
 ```bash
 git status --short
-git add CHANGELOG.md README.md docs/llms.md kube.tf.example .claude/skills/prepare-release/SKILL.md
+git add CHANGELOG.md README.md docs/llms.md docs/terraform.md kube.tf.example .claude/skills
 git commit -m "$(cat <<'EOF'
 chore: prepare release vX.Y.Z
 
@@ -352,6 +418,7 @@ Files that may need version updates:
 | `CHANGELOG.md` | Release content must stay under `[Unreleased]` until tag workflow runs |
 | `docs/llms.md` | Example version references |
 | `kube.tf.example` | Version in comments |
+| `.claude/skills/*/SKILL.md` | Operator workflows, v3 migration names, validation gates |
 | GPT knowledge | meta.version |
 
 ## Quick Checklist
@@ -362,6 +429,17 @@ Files that may need version updates:
 - [ ] CHANGELOG.md updated
 - [ ] Breaking changes documented with migration steps
 - [ ] Version badges updated (if needed)
+- [ ] `docs/terraform.md` regenerated
+- [ ] README "What's New in v3" release-tag URL is accurate/current for v3-series releases
+- [ ] Custom GPT knowledge file regenerated when applicable and `meta.version` matches the release
+- [ ] Project skills checked for stale v2 names
+- [ ] Tailscale node-transport README/example/skill guidance matches variables.tf
+- [ ] Cloudflare Access/Tunnel docs/examples say external-only, and no Cloudflare Mesh/WARP node-transport promise exists
+- [ ] v3 topology chooser, Cilium Gateway API, embedded registry mirror, and endpoint outputs are documented
+- [ ] `uv run scripts/validate_v3_final_polish_examples.py` passed
+- [ ] `uv run scripts/smoke_v3_plan_matrix.py` passed for Gateway API, registry mirror, public join endpoint guards, k3s/RKE2 Tailscale multinetwork constraints, and single-Gateway-controller validation
+- [ ] Terraform and OpenTofu validation passed
+- [ ] Every release-blocking CI job has a completed successful run, not merely no visible failures
 - [ ] Release notes drafted
 - [ ] Changes committed and pushed
 - [ ] If explicitly authorized, tag pushed
