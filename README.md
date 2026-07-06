@@ -37,9 +37,35 @@ A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k
 
 ---
 
+## 🆕 What's New in v3
+
+The biggest release in kube-hetzner history: months of hardening, every flagship path applied live against real Hetzner infrastructure before shipping.
+
+| | What you get |
+|---|---|
+| ⚔️ **RKE2, first-class** | k3s stays the lightweight default; RKE2 is now a fully supported distribution choice — same module, same workflow. |
+| 🐧 **Leap Micro by default** | New nodes boot openSUSE Leap Micro; your existing MicroOS nodes keep running untouched. |
+| 🕸️ **Tailscale node transport** | Opt-in `node_transport_mode = "tailscale"`: secure single-network clusters and private multinetwork scale-out, with reference designs past 100 and up to 10,000 nodes. |
+| 📌 **Deterministic addon versions** | Unset means a reviewed, pinned version matrix — `latest` is an explicit opt-in. No more surprise upstream bumps mid-apply. |
+| 🏷️ **Declarative node annotations** | Per-pool and per-node Kubernetes annotations, autoscaled nodes included — Longhorn disk bootstrap in three lines of config. |
+| 🧱 **Plan-time guardrails** | Cross-variable validation catches invalid topologies at `terraform plan` — not on a half-built cluster. |
+| 🌐 **Networking, unlocked** | Active nodepool `network_id`, subnet modes, Cilium Gateway API + dual-stack, egress gateway HA, embedded registry mirror, hardened NAT-router bastion. |
+| 💾 **Multi-volume nodes** | Attach and mount multiple Hetzner Volumes per node, declaratively. |
+| 🧹 **One-command teardown** | `scripts/destroy.sh` absorbs the known destroy races, then reports any orphaned resources — read-only, nothing deleted without you. |
+| 🛡️ **SELinux enforcing, documented** | Every policy rule now carries its provenance ([`docs/selinux.md`](docs/selinux.md)); `udica` ships on every node for targeted workload policies. |
+| ✅ **Evidence-backed release** | Fresh deploys, an in-place v2 upgrade with zero destroyed infrastructure, NAT failover, autoscaler, RKE2 — all live-proven in [`docs/v3-release-evidence.md`](docs/v3-release-evidence.md). |
+
+> [!TIP]
+> **Migrating from v2? Let your AI agent drive.** The [`/migrate-v2-to-v3` skill](#ai-assisted-migration) ships in this repo and works with **Claude Code**, **Codex**, **Cursor**, and any agent that supports [agent skills](https://docs.claude.com/en/docs/claude-code/skills). It rewrites your `kube.tf` to the v3 contract, runs the protected-infrastructure plan gate, and reviews the plan with you — nothing is applied until you say so. Prefer hands-on? Start with [`MIGRATION.md`](MIGRATION.md).
+
+**The full story:** [v3.0.0 release notes](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/releases/tag/v3.0.0) · [CHANGELOG](CHANGELOG.md) · [`MIGRATION.md`](MIGRATION.md)
+
+---
+
 ## 📚 Table of Contents
 
 - [Highlights](#-highlights)
+- [What's New in v3](#-whats-new-in-v3)
 - [Quickstart](#-quickstart)
 - [Upgrading & Migration](#-upgrading--migration)
 - [Features & Support Matrix](#-features--support-matrix)
