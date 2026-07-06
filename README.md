@@ -33,6 +33,7 @@ A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k
 - **Leap Micro first:** new nodes default to openSUSE Leap Micro; MicroOS remains supported for upgrades/legacy nodes.
 - **Upgrade automation:** Kured handles HA-aware OS reboots; system-upgrade-controller manages k3s upgrades.
 - **Evidence-backed releases:** v3 release gates include live Hetzner apply, upgrade, health, NAT, autoscaler, RKE2, and destroy evidence in [`docs/v3-release-evidence.md`](docs/v3-release-evidence.md).
+- **AI-assisted migration and operations:** the repo ships agent skills for Claude Code and compatible agents — `/migrate-v2-to-v3` walks the whole v2 -> v3 upgrade with protected-infrastructure plan gates, plus `/kh-assistant`, `/upgrade-cluster`, and `/debug-node`. See [AI-assisted migration](#ai-assisted-migration).
 
 ---
 
@@ -192,6 +193,8 @@ tofu apply -auto-approve
 
 For `v2.x` -> `v3.x`, start with [`MIGRATION.md`](MIGRATION.md), the contract/variable map, and [`docs/v2-to-v3-migration.md`](docs/v2-to-v3-migration.md), the guided walkthrough. The live release evidence includes a `v2.21.0` -> `v3` in-place upgrade with 0 destroy/replace of hcloud infrastructure for the standard path; read the guide before planning and apply only after every planned resource action is understood.
 Production operators should read the [`Production in-place upgrades: safety model`](MIGRATION.md#production-in-place-upgrades-safety-model) before applying.
+
+> **Fastest path:** if you use Claude Code or a compatible agent, run the [`/migrate-v2-to-v3` skill](#ai-assisted-migration) from a checkout of this repo — it applies the rename map, runs the protected-infrastructure plan gate, and reviews the plan with you before anything is applied.
 
 From a local kube-hetzner checkout, audit the Terraform root, then run:
 

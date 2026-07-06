@@ -14,6 +14,7 @@ This is the v3 major-release line. Before upgrading from any `v2.x` release:
 1. Pin and review:
    - Set module version to `3.0.0` (or your targeted v3 tag).
    - Read `docs/v2-to-v3-migration.md` and `MIGRATION.md` end-to-end.
+   - Fastest path: with Claude Code or a compatible agent, run the `/migrate-v2-to-v3` agent skill from a checkout of this repo — it applies the variable rename map, runs the protected-infrastructure plan gate, and reviews the upgrade plan with you (see the README section "AI-assisted migration").
 2. Run safe upgrade flow:
    - `terraform init -upgrade`
    - `terraform plan`
