@@ -985,13 +985,22 @@ resource "terraform_data" "kustomization" {
   ]
 }
 
+# Aggregates the replacement state of all agent nodes into a single instance so
+# the post-install readiness resources can react to agent changes via
+# replace_triggered_by. Referencing terraform_data.agents (a for_each resource)
+# directly there errors on OpenTofu when agent_nodepools is empty (zero
+# instances). See https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/issues/2236.
+resource "terraform_data" "agents_replacement_trigger" {
+  input = { for k, v in terraform_data.agents : k => v.id }
+}
+
 resource "terraform_data" "post_install_readiness" {
   count = local.kubernetes_distribution == "k3s" ? 1 : 0
 
   lifecycle {
     replace_triggered_by = [
       terraform_data.kustomization,
-      terraform_data.agents,
+      terraform_data.agents_replacement_trigger.output,
     ]
   }
 
@@ -1493,7 +1502,7 @@ resource "terraform_data" "rke2_post_install_readiness" {
   lifecycle {
     replace_triggered_by = [
       terraform_data.rke2_kustomization,
-      terraform_data.agents,
+      terraform_data.agents_replacement_trigger.output,
     ]
   }
 
