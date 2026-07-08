@@ -991,7 +991,7 @@ resource "terraform_data" "kustomization" {
 # directly there errors on OpenTofu when agent_nodepools is empty (zero
 # instances). See https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/issues/2236.
 resource "terraform_data" "agents_replacement_trigger" {
-  input = { for k, v in terraform_data.agents : k => v.id }
+  triggers_replace = { for k, v in terraform_data.agents : k => v.id }
 }
 
 resource "terraform_data" "post_install_readiness" {
@@ -1000,7 +1000,7 @@ resource "terraform_data" "post_install_readiness" {
   lifecycle {
     replace_triggered_by = [
       terraform_data.kustomization,
-      terraform_data.agents_replacement_trigger.output,
+      terraform_data.agents_replacement_trigger,
     ]
   }
 
@@ -1502,7 +1502,7 @@ resource "terraform_data" "rke2_post_install_readiness" {
   lifecycle {
     replace_triggered_by = [
       terraform_data.rke2_kustomization,
-      terraform_data.agents_replacement_trigger.output,
+      terraform_data.agents_replacement_trigger,
     ]
   }
 
