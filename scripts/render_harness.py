@@ -399,6 +399,8 @@ def base_render_vars() -> dict[str, Any]:
         "install_k8s_agent_script": "#!/bin/bash\nset -e\necho install agent\n",
         "k3s_config": "server: https://10.0.0.10:6443\n",
         "kubernetes_api_port": 6443,
+        "cluster_has_ipv4": True,
+        "cluster_has_ipv6": False,
         "multinetwork_public_overlay_enabled": False,
         "multinetwork_transport_ipv4_enabled": False,
         "multinetwork_transport_ipv6_enabled": False,

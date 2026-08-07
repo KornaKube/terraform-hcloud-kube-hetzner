@@ -1789,8 +1789,8 @@ EOT
   cluster_has_ipv4            = local.cluster_ipv4_cidr_effective != null
   cluster_has_ipv6            = local.cluster_ipv6_cidr_effective != null
 
-  # k3s/RKE2 reject a dual-stack cluster-cidr/service-cidr when node-ip advertises
-  # only one family:
+  # k3s/RKE2 require node-ip to advertise the same address families as the
+  # cluster-cidr/service-cidr:
   #   "cluster-cidr: [...] and node-ip: [...], must share the same IP version"
   # Hetzner Cloud Networks are IPv4-only, so the IPv6 half of node-ip is necessarily
   # the node's public IPv6 address. compact() keeps this a no-op when a node has no
@@ -1798,11 +1798,31 @@ EOT
   # up front for dual-stack clusters.
   control_plane_node_ip_by_node = {
     for k, v in module.control_planes :
-    k => local.cluster_has_ipv6 ? join(",", compact([v.private_ipv4_address, v.ipv6_address])) : v.private_ipv4_address
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.private_ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
   }
   agent_node_ip_by_node = {
     for k, v in module.agents :
-    k => local.cluster_has_ipv6 ? join(",", compact([v.private_ipv4_address, v.ipv6_address])) : v.private_ipv4_address
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.private_ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
+  }
+  control_plane_public_overlay_node_ip_by_node = {
+    for k, v in module.control_planes :
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
+  }
+  agent_public_overlay_node_ip_by_node = {
+    for k, v in module.agents :
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
   }
 
   cluster_cidrs = compact([

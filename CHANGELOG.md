@@ -9,12 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠️ Upgrade Notes
 
-- **Dual-stack enablement on existing clusters:** static control-plane and agent nodes now render dual-stack `node-ip` when `cluster_ipv6_cidr` / `service_ipv6_cidr` are set. Kubernetes assigns `node.spec.podCIDRs` when a node registers, so existing IPv4-only nodes may need controlled re-registration/replacement to receive IPv6 PodCIDRs after enabling dual-stack. Active autoscaler nodepools remain blocked for standard private-network dual-stack clusters until autoscaler cloud-init can derive a dual-stack `node-ip` at boot.
+- **IPv6/dual-stack enablement on existing clusters:** static control-plane and agent nodes now render `node-ip` values that match the configured cluster CIDR families when `cluster_ipv6_cidr` / `service_ipv6_cidr` are set. Kubernetes assigns `node.spec.podCIDRs` when a node registers, so existing IPv4-only nodes may need controlled re-registration/replacement to receive IPv6 PodCIDRs after enabling dual-stack. Active autoscaler nodepools remain blocked for standard private-network dual-stack clusters until autoscaler cloud-init can derive a dual-stack `node-ip` at boot. `nat_router` remains private IPv4-only for this path and is rejected with IPv6 cluster CIDRs in this release; the experimental public-overlay path must use an overlay transport family that includes every enabled cluster CIDR family.
 - **openSUSE SSH access on new/replaced nodes:** cloud-init no longer writes the `ssh_pwauth` override that shadowed openSUSE's vendor `sshd_config`, and kube-hetzner's SSH drop-in now explicitly keeps `UsePAM yes`. This applies to newly provisioned or replaced openSUSE nodes.
 
 ### 🚀 New Features
 
-- Static control-plane and agent nodes now advertise dual-stack `node-ip` values when `cluster_ipv6_cidr` / `service_ipv6_cidr` are configured, making the existing Cilium dual-stack CIDR inputs usable on the standard private-network topology (#2244, #2245; thanks @bkero).
+- Static control-plane and agent nodes now advertise IPv6/dual-stack `node-ip` values that match configured cluster CIDR families, making the existing Cilium IPv6 CIDR inputs usable on the standard private-network topology where validation passes (#2244, #2245; thanks @bkero).
 
 ### 🐛 Bug Fixes
 

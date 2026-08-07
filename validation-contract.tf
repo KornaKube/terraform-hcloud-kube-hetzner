@@ -187,7 +187,7 @@ resource "terraform_data" "validation_contract" {
       error_message = "multinetwork_mode=\"cilium_public_overlay\" with IPv6 or dual-stack transport requires public IPv6 enabled on all control-plane and agent nodes, plus autoscaler nodes when autoscaler_nodepools are configured."
     }
 
-    # Dual-stack pod/service CIDRs require every node to advertise an IPv6 node-ip.
+    # IPv6 pod/service CIDRs require every node to advertise an IPv6 node-ip.
     # Hetzner Cloud Networks are IPv4-only, so that address is the node's public
     # IPv6. Without it, node-ip stays IPv4-only and k3s/RKE2 refuse to start with
     # "cluster-cidr: [...] and node-ip: [...], must share the same IP version",
@@ -196,6 +196,7 @@ resource "terraform_data" "validation_contract" {
       condition = (
         try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
         (
+          var.nat_router == null &&
           alltrue([
             for control_plane_nodepool in var.control_plane_nodepools :
             control_plane_nodepool.enable_public_ipv6 &&
@@ -214,13 +215,13 @@ resource "terraform_data" "validation_contract" {
           ])
         )
       )
-      error_message = "cluster_ipv6_cidr/service_ipv6_cidr require public IPv6 enabled on all control-plane and agent nodes, because Hetzner Cloud Networks are IPv4-only and the IPv6 half of node-ip must be the node's public address."
+      error_message = "cluster_ipv6_cidr/service_ipv6_cidr require effective public IPv6 on all control-plane and agent nodes, because Hetzner Cloud Networks are IPv4-only and the IPv6 half of node-ip must be the node's public address. nat_router is private-only and cannot be combined with IPv6 cluster CIDRs in this release."
     }
 
     # Static nodes know their public IPv6 address at plan time. Autoscaler-created
-    # nodes do not, and the standard cloud-init path does not yet inject a
-    # dual-stack node-ip for them. The experimental public-overlay path already
-    # performs runtime node-ip detection, so keep that path available.
+    # nodes do not in the standard private-network path. The experimental
+    # public-overlay path performs runtime public node-ip detection, so keep that
+    # explicitly opted-in lab path available.
     precondition {
       condition = (
         try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
@@ -231,6 +232,24 @@ resource "terraform_data" "validation_contract" {
         ])
       )
       error_message = "cluster_ipv6_cidr/service_ipv6_cidr with active autoscaler_nodepools currently requires multinetwork_mode=\"cilium_public_overlay\" so autoscaler nodes can derive a dual-stack node-ip at boot. For standard private-network dual-stack clusters, use static agent nodepools until autoscaler cloud-init supports runtime node-ip injection."
+    }
+
+    precondition {
+      condition = (
+        var.multinetwork_mode != "cilium_public_overlay" ||
+        try(trimspace(var.cluster_ipv4_cidr), "") == "" ||
+        contains(["ipv4", "dualstack"], var.multinetwork_transport_ip_family)
+      )
+      error_message = "multinetwork_mode=\"cilium_public_overlay\" must use IPv4 or dual-stack transport when cluster_ipv4_cidr/service_ipv4_cidr are enabled so node-ip includes the IPv4 cluster family."
+    }
+
+    precondition {
+      condition = (
+        var.multinetwork_mode != "cilium_public_overlay" ||
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        contains(["ipv6", "dualstack"], var.multinetwork_transport_ip_family)
+      )
+      error_message = "multinetwork_mode=\"cilium_public_overlay\" must use IPv6 or dual-stack transport when cluster_ipv6_cidr/service_ipv6_cidr are enabled so node-ip includes the IPv6 cluster family."
     }
 
     # Moved from variable "node_transport_mode" validation near variables.tf:453.

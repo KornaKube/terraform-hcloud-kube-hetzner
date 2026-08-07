@@ -1,0 +1,10 @@
+cluster_ipv6_cidr = "fd00:42::/56"
+service_ipv6_cidr = "fd00:43::/112"
+cni_plugin        = "cilium"
+
+enable_control_plane_load_balancer = true
+
+nat_router = {
+  server_type = "cx23"
+  location    = "nbg1"
+}

@@ -172,6 +172,7 @@ ${cloudinit_runcmd_common}
   }
 
   OVERLAY_NODE_IPS=""
+  OVERLAY_NODE_EXTERNAL_IPS=""
 %{if multinetwork_transport_ipv4_enabled~}
   PUB4_IF=$(ip -4 route get 172.31.1.1 2>/dev/null | route_dev)
   PUB4_IP=$(curl -fsS --max-time 2 http://169.254.169.254/hetzner/v1/metadata/public-ipv4 2>/dev/null || true)
@@ -179,7 +180,7 @@ ${cloudinit_runcmd_common}
     PUB4_IP=$(ip -o -4 addr show dev "$PUB4_IF" scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]; exit}')
   fi
   if [ -n "$PUB4_IP" ]; then
-    OVERLAY_NODE_IPS="$PUB4_IP"
+    OVERLAY_NODE_EXTERNAL_IPS="$PUB4_IP"
   fi
 %{endif~}
 %{if multinetwork_transport_ipv6_enabled~}
@@ -192,6 +193,20 @@ ${cloudinit_runcmd_common}
     PUB6_IP=$(ip -o -6 addr show dev "$PUB6_IF" scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]; exit}')
   fi
   if [ -n "$PUB6_IP" ]; then
+    if [ -n "$OVERLAY_NODE_EXTERNAL_IPS" ]; then
+      OVERLAY_NODE_EXTERNAL_IPS="$OVERLAY_NODE_EXTERNAL_IPS,$PUB6_IP"
+    else
+      OVERLAY_NODE_EXTERNAL_IPS="$PUB6_IP"
+    fi
+  fi
+%{endif~}
+%{if cluster_has_ipv4~}
+  if [ -n "$${PUB4_IP:-}" ]; then
+    OVERLAY_NODE_IPS="$PUB4_IP"
+  fi
+%{endif~}
+%{if cluster_has_ipv6~}
+  if [ -n "$${PUB6_IP:-}" ]; then
     if [ -n "$OVERLAY_NODE_IPS" ]; then
       OVERLAY_NODE_IPS="$OVERLAY_NODE_IPS,$PUB6_IP"
     else
@@ -202,10 +217,10 @@ ${cloudinit_runcmd_common}
 
   if [ -n "$OVERLAY_NODE_IPS" ]; then
     sed -i '/^node-ip:/d;/^node-external-ip:/d' /tmp/config.yaml
-    {
-      printf 'node-ip: "%s"\n' "$OVERLAY_NODE_IPS"
-      printf 'node-external-ip: "%s"\n' "$OVERLAY_NODE_IPS"
-    } >> /tmp/config.yaml
+    printf 'node-ip: "%s"\n' "$OVERLAY_NODE_IPS" >> /tmp/config.yaml
+    if [ -n "$OVERLAY_NODE_EXTERNAL_IPS" ]; then
+      printf 'node-external-ip: "%s"\n' "$OVERLAY_NODE_EXTERNAL_IPS" >> /tmp/config.yaml
+    fi
   else
     echo "WARN: cilium_public_overlay could not determine a public node IP" >&2
   fi

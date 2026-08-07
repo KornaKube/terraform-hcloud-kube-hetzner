@@ -224,6 +224,8 @@ data "cloudinit_config" "autoscaler_config" {
         public_ipv4_default_route           = var.autoscaler_enable_public_ipv4 && !local.use_nat_router
         public_ipv6_default_route           = var.autoscaler_enable_public_ipv6 && !local.use_nat_router
         network_gw_ipv4                     = local.network_gw_ipv4_by_network_id[local.autoscaler_effective_network_id_by_index[count.index] == 0 ? data.hcloud_network.k3s.id : local.autoscaler_effective_network_id_by_index[count.index]]
+        cluster_has_ipv4                    = local.cluster_has_ipv4
+        cluster_has_ipv6                    = local.cluster_has_ipv6
         multinetwork_public_overlay_enabled = local.multinetwork_overlay_enabled
         multinetwork_transport_ipv4_enabled = local.multinetwork_transport_ipv4_enabled
         multinetwork_transport_ipv6_enabled = local.multinetwork_transport_ipv6_enabled
@@ -277,6 +279,8 @@ data "cloudinit_config" "autoscaler_config_rke2" {
         public_ipv4_default_route           = var.autoscaler_enable_public_ipv4 && !local.use_nat_router
         public_ipv6_default_route           = var.autoscaler_enable_public_ipv6 && !local.use_nat_router
         network_gw_ipv4                     = local.network_gw_ipv4_by_network_id[local.autoscaler_effective_network_id_by_index[count.index] == 0 ? data.hcloud_network.k3s.id : local.autoscaler_effective_network_id_by_index[count.index]]
+        cluster_has_ipv4                    = local.cluster_has_ipv4
+        cluster_has_ipv6                    = local.cluster_has_ipv6
         multinetwork_public_overlay_enabled = local.multinetwork_overlay_enabled
         multinetwork_transport_ipv4_enabled = local.multinetwork_transport_ipv4_enabled
         multinetwork_transport_ipv6_enabled = local.multinetwork_transport_ipv6_enabled

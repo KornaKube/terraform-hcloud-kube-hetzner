@@ -88,7 +88,19 @@ CASES = [
         name="dualstack-standard-autoscaler",
         var_file=FIXTURE_DIR / "dualstack-standard-autoscaler.tfvars.fixture",
         target="module.sut.terraform_data.validation_contract",
-        expected_substring="cluster_ipv6_cidr/service_ipv6_cidr with active autoscaler_nodepools currently requires",
+        expected_substring='currently requires multinetwork_mode="cilium_public_overlay"',
+    ),
+    Case(
+        name="dualstack-nat-router",
+        var_file=FIXTURE_DIR / "dualstack-nat-router.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="private-only and cannot be combined with IPv6 cluster CIDRs",
+    ),
+    Case(
+        name="public-overlay-ipv6-transport-mismatch",
+        var_file=FIXTURE_DIR / "public-overlay-ipv6-transport-mismatch.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="must use IPv6 or dual-stack",
     ),
 ]
 
