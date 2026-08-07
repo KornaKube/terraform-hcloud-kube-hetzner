@@ -84,6 +84,12 @@ CASES = [
         target="module.sut.terraform_data.validation_contract",
         expected_substring="When nat_router is enabled",
     ),
+    Case(
+        name="dualstack-standard-autoscaler",
+        var_file=FIXTURE_DIR / "dualstack-standard-autoscaler.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="cluster_ipv6_cidr/service_ipv6_cidr with active autoscaler_nodepools currently requires",
+    ),
 ]
 
 
