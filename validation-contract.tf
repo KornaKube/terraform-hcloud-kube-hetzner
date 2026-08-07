@@ -252,6 +252,14 @@ resource "terraform_data" "validation_contract" {
       error_message = "multinetwork_mode=\"cilium_public_overlay\" must use IPv6 or dual-stack transport when cluster_ipv6_cidr/service_ipv6_cidr are enabled so node-ip includes the IPv6 cluster family."
     }
 
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        local.cilium_routing_mode_effective != "native"
+      )
+      error_message = "cluster_ipv6_cidr/service_ipv6_cidr cannot be used with cilium_routing_mode=\"native\" in this release. Hetzner Cloud Networks are IPv4-only and the module does not configure native IPv6 pod CIDR routing; use the default tunnel mode."
+    }
+
     # Moved from variable "node_transport_mode" validation near variables.tf:453.
     precondition {
       condition = (

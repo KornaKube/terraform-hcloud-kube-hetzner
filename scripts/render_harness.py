@@ -769,6 +769,38 @@ def run_node_annotation_cloudinit_checks(scratch: TerraformScratch) -> None:
     assert_node_annotation_payload("node annotations autoscaler cloud-init", document, rendered)
 
 
+def run_autoscaler_overlay_node_ip_checks() -> None:
+    overlay_vars = base_render_vars()
+    overlay_vars.update(
+        {
+            "cluster_has_ipv4": True,
+            "cluster_has_ipv6": True,
+            "multinetwork_public_overlay_enabled": True,
+            "multinetwork_transport_ipv4_enabled": True,
+            "multinetwork_transport_ipv6_enabled": True,
+        }
+    )
+    rendered, _ = render_cloudinit_with_vars(
+        overlay_vars,
+        REPO_ROOT / "templates/autoscaler-cloudinit.yaml.tpl",
+    )
+    snippets = {
+        "IPv4 cluster-family node-ip assignment": 'OVERLAY_NODE_IPS="$PUB4_IP"',
+        "IPv6 cluster-family node-ip append": 'OVERLAY_NODE_IPS="$OVERLAY_NODE_IPS,$PUB6_IP"',
+        "transport-family node-external-ip assignment": 'OVERLAY_NODE_EXTERNAL_IPS="$PUB4_IP"',
+        "transport-family node-external-ip append": 'OVERLAY_NODE_EXTERNAL_IPS="$OVERLAY_NODE_EXTERNAL_IPS,$PUB6_IP"',
+        "node-ip write": 'printf \'node-ip: "%s"\\n\' "$OVERLAY_NODE_IPS"',
+        "node-external-ip write": 'printf \'node-external-ip: "%s"\\n\' "$OVERLAY_NODE_EXTERNAL_IPS"',
+    }
+    for label, snippet in snippets.items():
+        if snippet not in rendered:
+            fail("autoscaler overlay dual-stack cloud-init", f"missing {label}: {snippet}")
+    print_pass(
+        "autoscaler overlay dual-stack cloud-init",
+        "renders IPv4/IPv6 node-ip and node-external-ip update paths separately",
+    )
+
+
 def split_yaml_documents(manifest: str) -> list[str]:
     documents: list[str] = []
     current: list[str] = []
@@ -1032,6 +1064,7 @@ def main() -> int:
         run_shell_checks(scratch)
         run_cloudinit_checks(scratch)
         run_node_annotation_cloudinit_checks(scratch)
+        run_autoscaler_overlay_node_ip_checks()
         run_autoscaler_manifest_checks(scratch)
         run_kubeconfig_checks(scratch)
         run_kustomization_path_checks(scratch)

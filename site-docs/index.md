@@ -44,7 +44,7 @@ Trim the pools and feature examples you do not need before first apply.
 <summary><strong>Fish shell version</strong></summary>
 
 ```fish
-set tmp_script (mktemp); curl -sSL -o "{tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; chmod +x "{tmp_script}"; bash "{tmp_script}"; rm "{tmp_script}"
+set tmp_script (mktemp); curl -sSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; chmod +x "$tmp_script"; bash "$tmp_script"; rm "$tmp_script"
 ```
 </details>
 

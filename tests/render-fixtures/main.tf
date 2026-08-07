@@ -27,6 +27,7 @@ module "sut" {
   cluster_name            = "render-fixture"
   kubernetes_distribution = var.kubernetes_distribution
   cni_plugin              = var.cni_plugin
+  cilium_routing_mode     = var.cilium_routing_mode
   network_region          = "eu-central"
   enabled_architectures   = ["x86"]
 
@@ -79,6 +80,11 @@ variable "kubernetes_distribution" {
 variable "cni_plugin" {
   type    = string
   default = "flannel"
+}
+
+variable "cilium_routing_mode" {
+  type    = string
+  default = "tunnel"
 }
 
 variable "ingress_controller" {

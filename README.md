@@ -156,7 +156,7 @@ Trim the pools and feature examples you do not need before first apply.
 <summary><strong>Fish shell version</strong></summary>
 
 ```fish
-set tmp_script (mktemp); curl -sSL -o "{tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; chmod +x "{tmp_script}"; bash "{tmp_script}"; rm "{tmp_script}"
+set tmp_script (mktemp); curl -sSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; chmod +x "$tmp_script"; bash "$tmp_script"; rm "$tmp_script"
 ```
 </details>
 
@@ -423,7 +423,7 @@ Update `version` in your kube.tf and run `terraform apply`.
 | MicroOS | Legacy/upgrade support | Existing clusters remain supported; new nodepools default to Leap Micro. |
 | OpenTofu | Supported | Validate with `tofu init`, `tofu validate`, and `tofu plan` before applying. |
 | Addon version defaults | Reviewed deterministic defaults | Unset addon version variables use the module's reviewed version matrix; set `latest` only when you intentionally want upstream latest behavior. |
-| Cilium IPv6/dual-stack | Supported for static nodes | Preferred advanced CNI path. Static control-plane and agent nodes advertise `node-ip` values matching the configured cluster CIDR families. `nat_router` remains private IPv4-only and is rejected with IPv6 cluster CIDRs in this release; active autoscaler nodepools need the experimental public-overlay path until standard autoscaler cloud-init learns runtime IPv6/dual-stack `node-ip` injection. |
+| Cilium IPv6/dual-stack | Static/plan validated; live E2E pending | Preferred advanced CNI path. Static control-plane and agent nodes advertise `node-ip` values matching the configured cluster CIDR families. Standard private-network IPv6/dual-stack uses Cilium tunnel mode; direct node-to-node public IPv6 paths are not opened by the module firewall in this release. `nat_router` remains private IPv4-only and is rejected with IPv6 cluster CIDRs; active autoscaler nodepools need the experimental public-overlay path until standard autoscaler cloud-init learns runtime IPv6/dual-stack `node-ip` injection. |
 | Cilium Gateway API | Supported opt-in | `cilium_gateway_api_enabled = true` installs standard Gateway API CRDs and enables Cilium Gateway API. Requires Cilium with kube-proxy replacement. |
 | Tailscale node transport | Static/plan validated; live E2E pending | `node_transport_mode = "tailscale"` has static validation and plan-matrix coverage; recommended for evaluation, not yet certified for production topologies. |
 | Embedded registry mirror | Supported opt-in | Enables k3s/RKE2's embedded Spegel mirror for trusted larger clusters. |

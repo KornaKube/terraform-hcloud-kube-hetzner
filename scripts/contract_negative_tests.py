@@ -102,6 +102,12 @@ CASES = [
         target="module.sut.terraform_data.validation_contract",
         expected_substring="must use IPv6 or dual-stack",
     ),
+    Case(
+        name="dualstack-native-routing",
+        var_file=FIXTURE_DIR / "dualstack-native-routing.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring='cilium_routing_mode="native"',
+    ),
 ]
 
 
