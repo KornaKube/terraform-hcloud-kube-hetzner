@@ -1,6 +1,6 @@
 ---
 name: running-stabilization-loop
-description: "Use after major refactors or risky infrastructure changes to run iterative stabilization loops in kube-test: clean state, run the v3 matrix (k3s/rke2, autoscaler, leapmicro/microos, multi-arch), proactively debug failures over SSH/journalctl, apply fixes, retest until green, then validate upgrade paths from the latest tag to current staging."
+description: "Use after major refactors or risky infrastructure changes to run iterative stabilization loops in kube-test: clean state, run the v3 matrix (k3s/rke2, autoscaler, leapmicro/microos, multi-arch), proactively debug failures over SSH/journalctl, apply fixes, retest until green, then validate upgrade paths from the latest tag to the current release-candidate branch."
 ---
 
 # Running Stabilization Loop
@@ -26,7 +26,7 @@ Goals:
 1) Make every matrix scenario pass from simple to complex.
 2) Fix root causes in kube-hetzner (not workarounds in test harness) unless explicitly required.
 3) Re-run full matrix after fixes to prove no regressions.
-4) Validate upgrade path from latest git tag to current staging for both k3s and rke2.
+4) Validate upgrade path from latest git tag to the current release-candidate branch for both k3s and rke2.
 5) When Tailscale credentials are available, include the Tailscale node-transport
    scenarios: secure single-network Tailnet access, plus Flannel with multiple
    Hetzner Networks, route auto-approval, autoscaler scale-up/down,
@@ -54,7 +54,7 @@ Hard requirements:
 Deliverables:
 - Final scenario matrix results with log paths.
 - List of fixes made with files changed.
-- Upgrade test result (tag -> staging) and any required migration notes.
+- Upgrade test result (tag -> release-candidate branch) and any required migration notes.
 - Confirmation cleanup is complete and no khv3-* resources are left.
 ```
 
@@ -89,7 +89,7 @@ digraph stabilize_flow {
     debug [label="5. Proactive SSH/journal triage"];
     fix [label="6. Implement fix + rerun failing scenarios"];
     full [label="7. Full matrix regression rerun"];
-    upgrade [label="8. Upgrade path tests (latest tag -> staging)"];
+    upgrade [label="8. Upgrade path tests (latest tag -> release candidate)"];
     finalize [label="9. Final cleanup + commit/push"];
 
     sync -> clean;
@@ -107,8 +107,7 @@ digraph stabilize_flow {
 
 ```bash
 cd /Volumes/MysticalTech/Code/kube-hetzner
-git checkout staging
-git pull --ff-only origin staging
+git pull --ff-only origin "$(git branch --show-current)"
 terraform fmt -recursive
 terraform init -backend=false
 terraform validate
@@ -300,9 +299,9 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)" ./run_v3_matrix.sh
 
 No change is done until this full rerun passes.
 
-## Step 8: Upgrade Path Loop (Latest Tag -> Staging)
+## Step 8: Upgrade Path Loop (Latest Tag -> Release Candidate)
 
-Build a baseline on latest tag, then upgrade to current staging code.
+Build a baseline on latest tag, then upgrade to the current release-candidate code.
 
 ```bash
 LATEST_TAG="$(git -C /Volumes/MysticalTech/Code/kube-hetzner tag --list 'v*' --sort=-v:refname | head -n1)"
@@ -334,14 +333,14 @@ git -C /Volumes/MysticalTech/Code/kube-hetzner worktree remove "$TAG_TREE"
 
 ## Step 9: Finalize
 
-If requested to push directly to staging:
+If requested to push the current release-candidate branch:
 
 ```bash
 cd /Volumes/MysticalTech/Code/kube-hetzner
 git status --short
 git add -A
 git commit -m "fix: stabilize v3 matrix and upgrade loops"
-git push origin staging
+git push origin "$(git branch --show-current)"
 ```
 
 ## Abort/Cleanup Shortcut
