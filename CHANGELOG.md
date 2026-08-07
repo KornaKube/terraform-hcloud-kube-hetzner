@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+### ⚠️ Upgrade Notes
+
+- **Dual-stack enablement on existing clusters:** static control-plane and agent nodes now render dual-stack `node-ip` when `cluster_ipv6_cidr` / `service_ipv6_cidr` are set. Kubernetes assigns `node.spec.podCIDRs` when a node registers, so existing IPv4-only nodes may need controlled re-registration/replacement to receive IPv6 PodCIDRs after enabling dual-stack. Active autoscaler nodepools remain blocked for standard private-network dual-stack clusters until autoscaler cloud-init can derive a dual-stack `node-ip` at boot.
+- **openSUSE SSH access on new/replaced nodes:** cloud-init no longer writes the `ssh_pwauth` override that shadowed openSUSE's vendor `sshd_config`, and kube-hetzner's SSH drop-in now explicitly keeps `UsePAM yes`. This applies to newly provisioned or replaced openSUSE nodes.
+
+### 🚀 New Features
+
+- Static control-plane and agent nodes now advertise dual-stack `node-ip` values when `cluster_ipv6_cidr` / `service_ipv6_cidr` are configured, making the existing Cilium dual-stack CIDR inputs usable on the standard private-network topology (#2244, #2245; thanks @bkero).
+
+### 🐛 Bug Fixes
+
+- Fixed non-empty `registries_config` rendering with Terraform/OpenTofu by keeping the conditional result type consistent (#2241, #2242; thanks @prochac).
+- Fixed private-only clusters whose public control-plane host is intentionally absent so plans no longer fail with a `coalesce` error (#2248, #2249; thanks @elkh510).
+- Fixed new/replaced openSUSE nodes losing SSH access when cloud-init generated a minimal `/etc/ssh/sshd_config` from `ssh_pwauth: false`, which hid the vendor `UsePAM yes` setting (#2252; thanks @steache).
+
+### 🔧 Changes
+
+- Removed stale `staging` branch guidance from contributor docs, documentation CI triggers, and agent skills; release work now targets explicit release-candidate branches before merge (#2246; thanks @bkero).
+- Updated `dflook/terraform-fmt-check` from 2.2.3 to 3.0.0 (#2243).
+
+### 📚 Documentation
+
+- Cleaned up stale README/site wording around Ansible, MetalLB, and Hetzner firewall defaults (#2247; thanks @SnoozeFreddo).
 
 ---
 
