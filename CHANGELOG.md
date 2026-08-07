@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 New Features
 
-- Static control-plane and agent nodes now advertise dual-stack `node-ip` values that match configured cluster CIDR families, making the existing Cilium IPv6 CIDR inputs plan-validated on the standard private-network topology where validation passes (#2244, #2245; thanks @bkero).
+- Static control-plane and agent nodes now advertise dual-stack `node-ip` values that match configured cluster CIDR families, making the existing Cilium IPv6 CIDR inputs plan-validated on the standard private-network topology where validation passes (#2170, #2244, #2245; thanks @mgazza, @bkero).
 
 ### 🐛 Bug Fixes
 
@@ -27,11 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔧 Changes
 
 - Removed stale `staging` branch guidance from contributor docs, documentation CI triggers, and agent skills; release work now targets explicit release-candidate branches before merge (#2246; thanks @bkero).
-- Updated `dflook/terraform-fmt-check` from 2.2.3 to 3.0.0 (#2243).
+- Updated `dflook/terraform-fmt-check` from 2.2.3 to 3.0.0 (#2243; thanks @dependabot).
 
 ### 📚 Documentation
 
 - Cleaned up stale README/site wording around Ansible, MetalLB, and Hetzner firewall defaults (#2247; thanks @SnoozeFreddo).
+- Updated v2 → v3 migration and LLM guidance to target v3.1.0/current v3 releases instead of the known-regression v3.0.0 baseline.
+- Clarified that the retired KH Assistant Custom GPT is no longer the supported assistant channel; users should install the `/kh-assistant` agent skill suite.
 
 ---
 

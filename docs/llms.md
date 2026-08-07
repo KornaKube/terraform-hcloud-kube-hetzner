@@ -103,7 +103,7 @@ module "kube-hetzner" {
     * Used when you have a local copy of the module's source code, typically for development or testing modifications to the module itself. The path is relative to this `main.tf` file.
   * **Option 3 (Direct Git Repository - For Bleeding Edge/Specific Commits):** `source = "github.com/kube-hetzner/terraform-hcloud-kube-hetzner"`
     * Pulls the module directly from the `master` branch of the GitHub repository. This is generally **not recommended for production** as `master` can be unstable.
-    * You can also specify a specific branch, tag, or commit hash using the `ref` query parameter (e.g., `source = "github.com/kube-hetzner/terraform-hcloud-kube-hetzner?ref=v3.0.0"`).
+    * You can also specify a specific branch, tag, or commit hash using the `ref` query parameter (e.g., `source = "github.com/kube-hetzner/terraform-hcloud-kube-hetzner?ref=v3.1.0"`).
 
 ```terraform
   # Note that some values, notably "location" and "public_key" have no effect after initializing the cluster.

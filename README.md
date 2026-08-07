@@ -68,7 +68,7 @@ The biggest release in kube-hetzner history: months of hardening, every flagship
 > [!TIP]
 > **Migrating from v2? Let your AI agent drive.** The [`/migrate-v2-to-v3` skill](#ai-assisted-migration) ships in this repo and works with **Claude Code**, **Codex**, **Cursor**, and any agent that supports [agent skills](https://docs.claude.com/en/docs/claude-code/skills). It rewrites your `kube.tf` to the v3 contract, runs the protected-infrastructure plan gate, and reviews the plan with you — nothing is applied until you say so. Prefer hands-on? Start with [`MIGRATION.md`](MIGRATION.md).
 
-**The full story:** [v3.0.0 release notes](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/releases/tag/v3.0.0) · [CHANGELOG](CHANGELOG.md) · [`MIGRATION.md`](MIGRATION.md)
+**The full story:** [v3.1.0 release notes](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/releases/tag/v3.1.0) · [CHANGELOG](CHANGELOG.md) · [`MIGRATION.md`](MIGRATION.md)
 
 ---
 
