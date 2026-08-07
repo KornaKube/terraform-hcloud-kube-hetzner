@@ -91,7 +91,6 @@ ssh_authorized_keys:
 
 # Allow root SSH login (required for provisioning)
 disable_root: false
-ssh_pwauth: false
 
 # Resize /var, not /, as that's the last partition in MicroOS image.
 growpart:

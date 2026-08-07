@@ -3382,6 +3382,7 @@ cloudinit_write_files_common = <<EOT
 # Disable ssh password authentication
 - content: |
     Port ${var.ssh_port}
+    UsePAM yes
     PasswordAuthentication no
     X11Forwarding no
     MaxAuthTries ${var.ssh_max_auth_tries}
