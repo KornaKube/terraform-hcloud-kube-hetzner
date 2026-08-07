@@ -64,8 +64,6 @@ jobs:
     runs-on: ubuntu-latest
     name: Render harness and contract negatives
     timeout-minutes: 30
-    env:
-      TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN || secrets.TF_VAR_HCLOUD_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -83,15 +81,6 @@ jobs:
 
       - name: Run negative contract tests (tokenless)
         run: python3 scripts/contract_negative_tests.py
-
-      - name: Run selected positive smoke matrix (token-backed)
-        if: ${{ env.TF_VAR_hcloud_token != '' }}
-        run: |
-          python3 scripts/smoke_v3_plan_matrix.py \
-            --filter cilium-dualstack-static-valid \
-            --filter cilium-dualstack-rke2-static-valid \
-            --filter cilium-dualstack-dormant-pools-valid \
-            --filter public-join-nat-defaults-invalid
 
   opentofu-validate:
     runs-on: ubuntu-latest

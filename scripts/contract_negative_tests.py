@@ -23,7 +23,7 @@ MIN_EXECUTED_CASES = 3
 # A real HCloud token (read access suffices) is required to evaluate contracts
 # that depend on data sources (e.g. the server-type RAM map). Without one the
 # suite skips politely; WITH one, executed-case minimums are enforced.
-HCLOUD_TOKEN = os.environ.get("HCLOUD_TOKEN", "").strip()
+HCLOUD_TOKEN = (os.environ.get("HCLOUD_TOKEN", "").strip() or os.environ.get("TF_VAR_hcloud_token", "").strip())
 TOKEN_MODE = len(HCLOUD_TOKEN) == 64
 PLUGIN_CACHE_DIR = Path.home() / ".terraform.d/plugin-cache"
 CLI_CONFIG_FILE = FIXTURE_DIR / ".terraform/contract-negative-tests.tfrc"
@@ -317,6 +317,9 @@ def main() -> int:
                 "provider-backed plan cannot load schemas here"
             )
         print(f"SKIP summary: 0 executed cases, {len(CASES)} skipped due sandbox socket policy")
+        if TOKEN_MODE:
+            print("FAIL summary: token-backed mode requires provider-backed cases to execute")
+            return 1
         return 0
 
     executed = 0
@@ -331,10 +334,11 @@ def main() -> int:
         else:
             failed += 1
 
-    if executed < MIN_EXECUTED_CASES:
+    required_executed_cases = len(CASES) if TOKEN_MODE else MIN_EXECUTED_CASES
+    if executed < required_executed_cases:
         print(
             f"FAIL summary: {executed} executed cases, {skipped} skipped; "
-            f"need at least {MIN_EXECUTED_CASES} executed cases"
+            f"need at least {required_executed_cases} executed cases"
         )
         failed += 1
     else:

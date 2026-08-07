@@ -1,0 +1,57 @@
+name: Trusted HCloud Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Maintainer-reviewed branch, tag, or SHA to run with HCloud secrets"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  hcloud-smoke:
+    runs-on: ubuntu-latest
+    name: HCloud plan smoke
+    environment: hcloud-smoke
+    timeout-minutes: 60
+    steps:
+      - name: Checkout candidate ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.0
+          terraform_wrapper: false
+
+      - name: Run token-backed negative contract tests
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN || secrets.TF_VAR_HCLOUD_TOKEN }}
+        run: |
+          if [ -z "${HCLOUD_TOKEN:-}" ]; then
+            echo "::error::HCLOUD_TOKEN or TF_VAR_HCLOUD_TOKEN secret is required for trusted smoke."
+            exit 1
+          fi
+          if [ "${#HCLOUD_TOKEN}" -ne 64 ]; then
+            echo "::error::HCLOUD_TOKEN must be a 64-character HCloud token."
+            exit 1
+          fi
+          python3 scripts/contract_negative_tests.py
+
+      - name: Run selected positive smoke matrix
+        env:
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN || secrets.TF_VAR_HCLOUD_TOKEN }}
+        run: |
+          python3 scripts/smoke_v3_plan_matrix.py \
+            --filter cilium-dualstack-static-valid \
+            --filter cilium-dualstack-rke2-static-valid \
+            --filter cilium-dualstack-dormant-pools-valid \
+            --filter public-join-private-control-plane-invalid \
+            --filter nat-router-private-only-valid \
+            --filter embedded-registry-k3s-valid
