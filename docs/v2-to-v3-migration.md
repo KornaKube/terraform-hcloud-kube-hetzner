@@ -77,7 +77,7 @@ Complete this before applying a v3 plan:
 | Terraform | Supported | Requires Terraform `>= 1.10.1`. |
 | OpenTofu | Supported | Requires OpenTofu `>= 1.10.1`; run `tofu plan` before applying with OpenTofu. |
 | Flannel or Calico single-network clusters | Supported | Keep all nodes on one reachable private network. |
-| Cilium dual-stack | Supported | Preferred advanced CNI path. |
+| Cilium IPv6/dual-stack | Plan-validated for static nodes; live E2E pending | Static control-plane and agent nodes can advertise `node-ip` families matching configured CIDRs where validation passes. Do not enable dual-stack in place on an existing IPv4-only cluster; use a new cluster or blue/green migration. `nat_router`, Robot nodes, Tailscale transport, IPv6-only standard private networking, Cilium native routing with IPv6 CIDRs, and standard-path active autoscaler pools remain rejected or deferred in this release. |
 | Cilium Gateway API | Supported opt-in | Add after the base migration with `cilium_gateway_api_enabled = true`, `cni_plugin = "cilium"`, and `enable_kube_proxy = false`. |
 | Embedded registry mirror | Supported opt-in | Add after the base migration for trusted clusters; review equal node trust, credential sharing, and tag-poisoning risks. |
 | Tailscale node transport | Supported opt-in | Use `node_transport_mode = "tailscale"` for secure Tailnet access in single-network clusters or Flannel-first private multinetwork scale-out. |
@@ -319,7 +319,7 @@ Pin the module to the target v3 tag:
 ```hcl
 module "kube-hetzner" {
   source  = "kube-hetzner/kube-hetzner/hcloud"
-  version = "3.0.0"
+  version = "3.1.0"
 }
 ```
 

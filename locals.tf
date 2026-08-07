@@ -107,16 +107,16 @@ locals {
 
   control_plane_endpoint_host = var.control_plane_endpoint != null ? one(compact(regexall("^(?:https?://)?(?:.*@)?(?:\\[([a-fA-F0-9:]+)\\]|([^:/?#]+))", var.control_plane_endpoint)[0])) : null
   control_plane_private_host  = var.enable_control_plane_load_balancer ? hcloud_load_balancer_network.control_plane.*.ip[0] : module.control_planes[keys(module.control_planes)[0]].private_ipv4_address
-  control_plane_public_host = coalesce(
+  control_plane_public_host = try(coalesce(
     local.control_plane_endpoint_host,
     var.enable_control_plane_load_balancer && var.control_plane_load_balancer_enable_public_network && local.public_endpoint_ipv4_candidate ? hcloud_load_balancer.control_plane.*.ipv4[0] : null,
     var.enable_control_plane_load_balancer && var.control_plane_load_balancer_enable_public_network && local.public_endpoint_ipv6_candidate ? hcloud_load_balancer.control_plane.*.ipv6[0] : null,
     local.public_endpoint_ipv4_candidate ? module.control_planes[keys(module.control_planes)[0]].ipv4_address : null,
     local.public_endpoint_ipv6_candidate ? module.control_planes[keys(module.control_planes)[0]].ipv6_address : null,
-  )
+  ), null)
   control_plane_public_host_formatted = local.control_plane_public_host != null && provider::assert::ipv6(local.control_plane_public_host) ? "[${local.control_plane_public_host}]" : local.control_plane_public_host
   control_plane_private_endpoint      = "https://${local.control_plane_private_host}:${var.kubernetes_api_port}"
-  control_plane_public_endpoint       = var.control_plane_endpoint != null ? var.control_plane_endpoint : "https://${local.control_plane_public_host_formatted}:${var.kubernetes_api_port}"
+  control_plane_public_endpoint       = var.control_plane_endpoint != null ? var.control_plane_endpoint : (local.control_plane_public_host_formatted == null ? null : "https://${local.control_plane_public_host_formatted}:${var.kubernetes_api_port}")
   tailscale_first_control_plane_host  = local.node_transport_tailscale_enabled ? "${module.control_planes[keys(module.control_planes)[0]].name}.${local.tailscale_magicdns_domain}" : null
   tailscale_control_plane_join_host   = local.node_transport_tailscale_enabled ? module.control_planes[keys(module.control_planes)[0]].private_ipv4_address : null
   tailscale_k3s_join_endpoint         = local.node_transport_tailscale_enabled ? "https://${local.tailscale_control_plane_join_host}:${var.kubernetes_api_port}" : null
@@ -126,7 +126,7 @@ locals {
   k3s_endpoint = local.node_transport_tailscale_enabled ? local.tailscale_k3s_join_endpoint : (local.multinetwork_overlay_enabled ? local.control_plane_public_endpoint : local.control_plane_private_endpoint)
 
   rke2_private_join_endpoint = "https://${local.control_plane_private_host}:9345"
-  rke2_public_join_endpoint  = "https://${local.control_plane_public_host_formatted}:9345"
+  rke2_public_join_endpoint  = local.control_plane_public_host_formatted == null ? null : "https://${local.control_plane_public_host_formatted}:9345"
   rke2_join_endpoint         = local.node_transport_tailscale_enabled ? local.tailscale_rke2_join_endpoint : (local.multinetwork_overlay_enabled ? local.rke2_public_join_endpoint : local.rke2_private_join_endpoint)
 
   # Reviewed on 2026-07-05 from upstream release metadata and Helm chart indexes.
@@ -196,7 +196,10 @@ locals {
   # Check if the user has set custom DNS servers.
   has_dns_servers = length(var.dns_servers) > 0
 
-  registries_config_user = trimspace(var.registries_config) == "" ? {} : yamldecode(var.registries_config)
+  # The conditional lives inside yamldecode() so both branches are strings:
+  # `cond ? {} : yamldecode(...)` fails type unification (object({}) vs the
+  # decoded object type) for any non-empty registries_config.
+  registries_config_user = yamldecode(trimspace(var.registries_config) == "" ? "{}" : var.registries_config)
   embedded_registry_mirror_registries = var.embedded_registry_mirror.enabled ? [
     for registry in var.embedded_registry_mirror.registries : registry
   ] : []
@@ -1785,6 +1788,42 @@ EOT
   service_ipv6_cidr_effective = var.service_ipv6_cidr != null && trimspace(var.service_ipv6_cidr) != "" ? var.service_ipv6_cidr : null
   cluster_has_ipv4            = local.cluster_ipv4_cidr_effective != null
   cluster_has_ipv6            = local.cluster_ipv6_cidr_effective != null
+
+  # k3s/RKE2 require node-ip to advertise the same address families as the
+  # cluster-cidr/service-cidr:
+  #   "cluster-cidr: [...] and node-ip: [...], must share the same IP version"
+  # Hetzner Cloud Networks are IPv4-only, so the IPv6 half of node-ip is necessarily
+  # the node's public IPv6 address. compact() keeps this a no-op when a node has no
+  # public IPv6 (enable_public_ipv6 = false), which the validation contract rejects
+  # up front for dual-stack clusters.
+  control_plane_node_ip_by_node = {
+    for k, v in module.control_planes :
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.private_ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
+  }
+  agent_node_ip_by_node = {
+    for k, v in module.agents :
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.private_ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
+  }
+  control_plane_public_overlay_node_ip_by_node = {
+    for k, v in module.control_planes :
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
+  }
+  agent_public_overlay_node_ip_by_node = {
+    for k, v in module.agents :
+    k => join(",", compact([
+      local.cluster_has_ipv4 ? v.ipv4_address : null,
+      local.cluster_has_ipv6 ? v.ipv6_address : null,
+    ]))
+  }
 
   cluster_cidrs = compact([
     local.cluster_ipv4_cidr_effective,
@@ -3379,7 +3418,9 @@ cloudinit_write_files_common = <<EOT
 # Disable ssh password authentication
 - content: |
     Port ${var.ssh_port}
+    UsePAM yes
     PasswordAuthentication no
+    KbdInteractiveAuthentication no
     X11Forwarding no
     MaxAuthTries ${var.ssh_max_auth_tries}
     AllowTcpForwarding no

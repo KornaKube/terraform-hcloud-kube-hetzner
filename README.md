@@ -9,7 +9,7 @@
 
 **HA by default • Auto-upgrading • Cost-optimized**
 
-A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k3s on openSUSE Leap Micro (default) / MicroOS (legacy)<br>deployed for peanuts on [Hetzner Cloud](https://hetzner.com)
+A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k3s on openSUSE Leap Micro (default) / MicroOS (legacy)<br>deployed on [Hetzner Cloud](https://hetzner.com)
 
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.10.1-844FBA?style=flat-square&logo=terraform)](https://terraform.io)&nbsp;&nbsp;
 [![OpenTofu](https://img.shields.io/badge/OpenTofu-Compatible-FFDA18?style=flat-square&logo=opentofu)](https://opentofu.org)&nbsp;&nbsp;
@@ -68,7 +68,7 @@ The biggest release in kube-hetzner history: months of hardening, every flagship
 > [!TIP]
 > **Migrating from v2? Let your AI agent drive.** The [`/migrate-v2-to-v3` skill](#ai-assisted-migration) ships in this repo and works with **Claude Code**, **Codex**, **Cursor**, and any agent that supports [agent skills](https://docs.claude.com/en/docs/claude-code/skills). It rewrites your `kube.tf` to the v3 contract, runs the protected-infrastructure plan gate, and reviews the plan with you — nothing is applied until you say so. Prefer hands-on? Start with [`MIGRATION.md`](MIGRATION.md).
 
-**The full story:** [v3.0.0 release notes](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/releases/tag/v3.0.0) · [CHANGELOG](CHANGELOG.md) · [`MIGRATION.md`](MIGRATION.md)
+**The full story:** [v3.1.0 release notes](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/releases/tag/v3.1.0) · [CHANGELOG](CHANGELOG.md) · [`MIGRATION.md`](MIGRATION.md)
 
 ---
 
@@ -156,7 +156,7 @@ Trim the pools and feature examples you do not need before first apply.
 <summary><strong>Fish shell version</strong></summary>
 
 ```fish
-set tmp_script (mktemp); curl -sSL -o "{tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; chmod +x "{tmp_script}"; bash "{tmp_script}"; rm "{tmp_script}"
+set tmp_script (mktemp); curl -sSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; chmod +x "$tmp_script"; bash "$tmp_script"; rm "$tmp_script"
 ```
 </details>
 
@@ -423,7 +423,7 @@ Update `version` in your kube.tf and run `terraform apply`.
 | MicroOS | Legacy/upgrade support | Existing clusters remain supported; new nodepools default to Leap Micro. |
 | OpenTofu | Supported | Validate with `tofu init`, `tofu validate`, and `tofu plan` before applying. |
 | Addon version defaults | Reviewed deterministic defaults | Unset addon version variables use the module's reviewed version matrix; set `latest` only when you intentionally want upstream latest behavior. |
-| Cilium dual-stack | Supported | Preferred advanced CNI path. |
+| Cilium IPv6/dual-stack | Dual-stack static nodes are plan validated; live E2E pending | Preferred advanced CNI path. Static control-plane and agent nodes advertise `node-ip` values matching the configured cluster CIDR families. Standard private-network dual-stack uses Cilium tunnel mode; IPv6-only is rejected on the standard path because direct node-to-node public IPv6 paths are not opened by the module firewall in this release. `nat_router`, `extra_robot_nodes`, and `node_transport_mode = "tailscale"` remain private IPv4-only paths and are rejected with IPv6 cluster CIDRs; active autoscaler nodepools need the experimental public-overlay path until standard autoscaler cloud-init learns runtime IPv6/dual-stack `node-ip` injection. |
 | Cilium Gateway API | Supported opt-in | `cilium_gateway_api_enabled = true` installs standard Gateway API CRDs and enables Cilium Gateway API. Requires Cilium with kube-proxy replacement. |
 | Tailscale node transport | Static/plan validated; live E2E pending | `node_transport_mode = "tailscale"` has static validation and plan-matrix coverage; recommended for evaluation, not yet certified for production topologies. |
 | Embedded registry mirror | Supported opt-in | Enables k3s/RKE2's embedded Spegel mirror for trusted larger clusters. |
@@ -1834,7 +1834,7 @@ tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubuserconte
 5. Update `kube.tf.example` if needed
 6. Commit: `git commit -m 'Add AmazingFeature'`
 7. Push: `git push origin AmazingFeature`
-8. Open PR targeting `staging` branch
+8. Open PR targeting `master` branch
 
 ### Support This Project
 

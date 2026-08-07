@@ -1,0 +1,14 @@
+cluster_ipv6_cidr = "fd00:42::/56"
+service_ipv6_cidr = "fd00:43::/112"
+cni_plugin        = "cilium"
+
+autoscaler_nodepools = [
+  {
+    name        = "autoscaler"
+    server_type = "cx23"
+    location    = "nbg1"
+    min_nodes   = 0
+    max_nodes   = 1
+    os          = "leapmicro"
+  }
+]

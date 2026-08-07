@@ -290,6 +290,38 @@ def assert_agent_private_ipv4_contract(scratch: "TerraformScratch") -> None:
     )
 
 
+def assert_opensuse_ssh_cloudinit_contract() -> None:
+    """Protect the openSUSE SSH/PAM fix from regressing silently."""
+
+    locals_source = LOCALS_TF.read_text(encoding="utf-8")
+    normalized = normalize_hcl(locals_source)
+    required_fragments = (
+        "path:/etc/ssh/sshd_config.d/kube-hetzner.conf",
+        "Port${var.ssh_port}",
+        "UsePAMyes",
+        "PasswordAuthenticationno",
+        "KbdInteractiveAuthenticationno",
+        "AuthorizedKeysFile.ssh/authorized_keys",
+    )
+    missing = [fragment for fragment in required_fragments if fragment not in normalized]
+    if missing:
+        fail("openSUSE SSH cloud-init contract", f"missing fragments: {missing!r}")
+    for template in (
+        REPO_ROOT / "modules/host/templates/cloudinit.yaml.tpl",
+        REPO_ROOT / "templates/autoscaler-cloudinit.yaml.tpl",
+        REPO_ROOT / "templates/nat-router-cloudinit.yaml.tpl",
+    ):
+        if "ssh_pwauth" in template.read_text(encoding="utf-8"):
+            fail(
+                "openSUSE SSH cloud-init contract",
+                f"ssh_pwauth must remain absent from {template.relative_to(REPO_ROOT)}",
+            )
+    print_pass(
+        "openSUSE SSH cloud-init contract",
+        "shared drop-in keeps PAM and disables password/keyboard-interactive auth without ssh_pwauth",
+    )
+
+
 def base_render_vars() -> dict[str, Any]:
     var_values = {
         "audit_log_path": "/var/log/kubernetes/audit.log",
@@ -399,6 +431,8 @@ def base_render_vars() -> dict[str, Any]:
         "install_k8s_agent_script": "#!/bin/bash\nset -e\necho install agent\n",
         "k3s_config": "server: https://10.0.0.10:6443\n",
         "kubernetes_api_port": 6443,
+        "cluster_has_ipv4": True,
+        "cluster_has_ipv6": False,
         "multinetwork_public_overlay_enabled": False,
         "multinetwork_transport_ipv4_enabled": False,
         "multinetwork_transport_ipv6_enabled": False,
@@ -547,6 +581,333 @@ def bash_syntax_check(name: str, script: str) -> None:
     if result.returncode != 0:
         fail(name, strip_ansi(result.stderr).strip() or "bash -n failed")
     print_pass(name, "bash -n accepted rendered shell")
+
+
+def run_autoscaler_overlay_retry_simulation(overlay_script: str) -> None:
+    temp_dir = Path(tempfile.mkdtemp(prefix="kh-render-overlay-retry-"))
+    try:
+        fake_bin = temp_dir / "bin"
+        state_dir = temp_dir / "state"
+        fake_bin.mkdir()
+        state_dir.mkdir()
+
+        (fake_bin / "ip").write_text(
+            """#!/bin/sh
+set -eu
+state="${KH_FAKE_IP_STATE:?}"
+case "$*" in
+  "-4 route get 172.31.1.1")
+    file="$state/v4-route"
+    count=$(cat "$file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "$count" > "$file"
+    [ "$count" -gt 1 ] || exit 2
+    echo "172.31.1.1 dev eth0 src 192.0.2.10"
+    ;;
+  "-o -4 addr show dev eth0 scope global")
+    echo "2: eth0    inet 192.0.2.10/32 scope global eth0"
+    ;;
+  "-6 route show default")
+    file="$state/v6-route"
+    count=$(cat "$file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "$count" > "$file"
+    [ "$count" -gt 1 ] || exit 2
+    echo "default via fe80::1 dev eth0 proto ra metric 1024"
+    ;;
+  "-o -6 addr show scope global")
+    exit 2
+    ;;
+  "-o -6 addr show dev eth0 scope global")
+    echo "2: eth0    inet6 2001:db8::10/64 scope global"
+    ;;
+  *)
+    echo "unexpected ip invocation: $*" >&2
+    exit 1
+    ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        (fake_bin / "curl").write_text("#!/bin/sh\nexit 22\n", encoding="utf-8")
+        (fake_bin / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (fake_bin / "sed").write_text(
+            """#!/bin/sh
+set -eu
+if [ "$1" = "-i" ] && [ "$2" = '/^node-ip:/d;/^"node-ip":/d;/^node-external-ip:/d;/^"node-external-ip":/d' ]; then
+  awk '$0 !~ /^node-ip:/ && $0 !~ /^"node-ip":/ && $0 !~ /^node-external-ip:/ && $0 !~ /^"node-external-ip":/' "$3" > "$3.tmp"
+  mv "$3.tmp" "$3"
+  exit 0
+fi
+exec /usr/bin/sed "$@"
+""",
+            encoding="utf-8",
+        )
+        for path in fake_bin.iterdir():
+            path.chmod(0o755)
+
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text('"node-ip": "old"\n"node-external-ip": "old"\n', encoding="utf-8")
+        simulation_script = overlay_script.replace("/tmp/config.yaml", str(config_path))
+        simulation_script += '\n: "$KH_RENDER_STRICT_LEAK_PROBE"\n'
+        env = os.environ.copy()
+        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+        env["KH_FAKE_IP_STATE"] = str(state_dir)
+        env.pop("KH_RENDER_STRICT_LEAK_PROBE", None)
+        result = subprocess.run(
+            ["bash"],
+            input=simulation_script,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        if result.returncode != 0:
+            fail(
+                "autoscaler overlay retry simulation",
+                strip_ansi((result.stdout + "\n" + result.stderr).strip()) or "simulation failed",
+            )
+        rendered = config_path.read_text(encoding="utf-8")
+        expected_lines = (
+            'node-ip: "192.0.2.10,2001:db8::10"',
+            'node-external-ip: "192.0.2.10,2001:db8::10"',
+        )
+        missing = [line for line in expected_lines if line not in rendered]
+        if missing:
+            fail("autoscaler overlay retry simulation", f"missing rendered config lines: {missing!r}; got {rendered!r}")
+        if "old" in rendered:
+            fail("autoscaler overlay retry simulation", f"old node-ip lines were not removed: {rendered!r}")
+        print_pass(
+            "autoscaler overlay retry simulation",
+            "transient route failures retry, config is written, and strict mode does not leak",
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def run_autoscaler_standard_node_ip_simulation(node_ip_script: str) -> None:
+    temp_dir = Path(tempfile.mkdtemp(prefix="kh-render-standard-node-ip-"))
+    try:
+        fake_bin = temp_dir / "bin"
+        state_dir = temp_dir / "state"
+        fake_bin.mkdir()
+        state_dir.mkdir()
+
+        (fake_bin / "ip").write_text(
+            """#!/bin/sh
+set -eu
+state="${KH_FAKE_IP_STATE:?}"
+case "$*" in
+  "-4 route get 10.0.0.1")
+    file="$state/private-route"
+    count=$(cat "$file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "$count" > "$file"
+    [ "$count" -gt 1 ] || exit 2
+    echo "10.0.0.1 dev eth1 src 10.0.0.42"
+    ;;
+  "-o -4 addr show dev eth1 scope global")
+    echo "3: eth1    inet 10.0.0.42/16 scope global eth1"
+    ;;
+  *)
+    echo "unexpected ip invocation: $*" >&2
+    exit 1
+    ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        (fake_bin / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (fake_bin / "sed").write_text(
+            """#!/bin/sh
+set -eu
+if [ "$1" = "-i" ] && [ "$2" = '/^node-ip:/d;/^"node-ip":/d' ]; then
+  awk '$0 !~ /^node-ip:/ && $0 !~ /^"node-ip":/' "$3" > "$3.tmp"
+  mv "$3.tmp" "$3"
+  exit 0
+fi
+exec /usr/bin/sed "$@"
+""",
+            encoding="utf-8",
+        )
+        for path in fake_bin.iterdir():
+            path.chmod(0o755)
+
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text('server: https://10.0.0.10:9345\n"node-ip": "old"\n', encoding="utf-8")
+        simulation_script = node_ip_script.replace("/tmp/config.yaml", str(config_path))
+        simulation_script += '\n: "$KH_RENDER_STRICT_LEAK_PROBE"\n'
+        env = os.environ.copy()
+        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+        env["KH_FAKE_IP_STATE"] = str(state_dir)
+        env.pop("KH_RENDER_STRICT_LEAK_PROBE", None)
+        result = subprocess.run(
+            ["bash"],
+            input=simulation_script,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        if result.returncode != 0:
+            fail(
+                "autoscaler standard node-ip simulation",
+                strip_ansi((result.stdout + "\n" + result.stderr).strip()) or "simulation failed",
+            )
+        rendered = config_path.read_text(encoding="utf-8")
+        if 'node-ip: "10.0.0.42"' not in rendered:
+            fail("autoscaler standard node-ip simulation", f"private node-ip was not written: {rendered!r}")
+        if "old" in rendered:
+            fail("autoscaler standard node-ip simulation", f"old node-ip line was not removed: {rendered!r}")
+        print_pass(
+            "autoscaler standard node-ip simulation",
+            "transient private route failures retry, config is written, and strict mode does not leak",
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def run_autoscaler_standard_public_fallback_failure_simulation(node_ip_script: str) -> None:
+    temp_dir = Path(tempfile.mkdtemp(prefix="kh-render-standard-node-ip-public-fallback-"))
+    try:
+        fake_bin = temp_dir / "bin"
+        fake_bin.mkdir()
+
+        (fake_bin / "ip").write_text(
+            """#!/bin/sh
+set -eu
+case "$*" in
+  "-4 route get 10.0.0.1")
+    echo "10.0.0.1 via 172.31.1.1 dev eth0 src 203.0.113.10"
+    ;;
+  "-4 route show scope link")
+    echo "172.31.1.1 dev eth0 proto kernel scope link src 203.0.113.10"
+    ;;
+  "-o -4 addr show dev eth0 scope global")
+    echo "2: eth0    inet 203.0.113.10/32 scope global eth0"
+    ;;
+  *)
+    echo "unexpected ip invocation: $*" >&2
+    exit 1
+    ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        (fake_bin / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (fake_bin / "sed").write_text(
+            """#!/bin/sh
+set -eu
+if [ "$1" = "-i" ] && [ "$2" = '/^node-ip:/d;/^"node-ip":/d' ]; then
+  awk '$0 !~ /^node-ip:/ && $0 !~ /^"node-ip":/' "$3" > "$3.tmp"
+  mv "$3.tmp" "$3"
+  exit 0
+fi
+exec /usr/bin/sed "$@"
+""",
+            encoding="utf-8",
+        )
+        for path in fake_bin.iterdir():
+            path.chmod(0o755)
+
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text('server: https://10.0.0.10:9345\n', encoding="utf-8")
+        simulation_script = node_ip_script.replace("/tmp/config.yaml", str(config_path))
+        env = os.environ.copy()
+        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            ["bash"],
+            input=simulation_script,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        if result.returncode == 0:
+            fail(
+                "autoscaler standard public fallback simulation",
+                f"public default-route fallback wrote config instead of failing closed: {config_path.read_text(encoding='utf-8')!r}",
+            )
+        rendered = config_path.read_text(encoding="utf-8")
+        if "203.0.113.10" in rendered:
+            fail("autoscaler standard public fallback simulation", f"public IPv4 leaked into node-ip: {rendered!r}")
+        print_pass(
+            "autoscaler standard public fallback simulation",
+            "public default-route lookup is rejected until the private route is on-link",
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def run_autoscaler_standard_node_ip_checks() -> None:
+    standard_vars = base_render_vars()
+    rendered, document = render_cloudinit_with_vars(
+        standard_vars,
+        REPO_ROOT / "templates/autoscaler-cloudinit.yaml.tpl",
+    )
+    runcmd = document.get("runcmd")
+    if not isinstance(runcmd, list):
+        fail("autoscaler standard node-ip cloud-init", "runcmd is not a list")
+    node_ip_script = next(
+        (item for item in runcmd if isinstance(item, str) and "AUTOSCALER_NODE_PRIVATE_IP" in item),
+        "",
+    )
+    if not node_ip_script:
+        fail("autoscaler standard node-ip cloud-init", "rendered runcmd has no standard node-ip script")
+    if any(isinstance(item, str) and "OVERLAY_NODE_IPS" in item for item in runcmd):
+        fail("autoscaler standard node-ip cloud-init", "standard render unexpectedly includes overlay node-ip script")
+    bash_syntax_check("autoscaler standard node-ip cloud-init", node_ip_script)
+    snippets = {
+        "strict shell mode": "set -euo pipefail",
+        "strict shell mode scoped": ") || exit 1",
+        "private IPv4 retry loop": "for attempt in $(seq 1 60); do",
+        "private route probe tolerates retry": "ip -4 route get '10.0.0.1' 2>/dev/null || true",
+        "public fallback route rejection": '*" via "*) AUTOSCALER_NODE_PRIVATE_ROUTE="" ;;',
+        "private node-ip fail-closed check": "could not determine private IPv4 node-ip",
+        "old node-ip removal": "sed -i '/^node-ip:/d;/^\"node-ip\":/d' /tmp/config.yaml",
+        "node-ip write": 'printf \'node-ip: "%s"\\n\' "$AUTOSCALER_NODE_PRIVATE_IP"',
+    }
+    for label, snippet in snippets.items():
+        if snippet not in node_ip_script:
+            fail("autoscaler standard node-ip cloud-init", f"missing {label}: {snippet}")
+    if "WARN: could not determine private IPv4 node-ip" in node_ip_script:
+        fail("autoscaler standard node-ip cloud-init", "private node-ip discovery still only warns")
+    run_autoscaler_standard_node_ip_simulation(node_ip_script)
+    run_autoscaler_standard_public_fallback_failure_simulation(node_ip_script)
+    print_pass(
+        "autoscaler standard node-ip cloud-init",
+        "renders fail-closed private IPv4 node-ip discovery for non-overlay autoscaler nodes",
+    )
+
+
+def run_autoscaler_tailscale_bootstrap_scope_checks() -> None:
+    tailscale_vars = base_render_vars()
+    tailscale_vars["tailscale_bootstrap_script"] = """set -euo pipefail
+trap 'true' EXIT
+cat >/tmp/kh-tailscale-scope-check <<'EOF'
+tailscale heredoc payload
+EOF
+"""
+    _, document = render_cloudinit_with_vars(
+        tailscale_vars,
+        REPO_ROOT / "templates/autoscaler-cloudinit.yaml.tpl",
+    )
+    runcmd = document.get("runcmd")
+    if not isinstance(runcmd, list):
+        fail("autoscaler Tailscale bootstrap cloud-init", "runcmd is not a list")
+    tailscale_script = next(
+        (item for item in runcmd if isinstance(item, str) and "kh-tailscale-scope-check" in item),
+        "",
+    )
+    if not tailscale_script:
+        fail("autoscaler Tailscale bootstrap cloud-init", "rendered runcmd has no Tailscale bootstrap script")
+    bash_syntax_check("autoscaler Tailscale bootstrap cloud-init", tailscale_script)
+    if ") || exit 1" not in tailscale_script:
+        fail("autoscaler Tailscale bootstrap cloud-init", "Tailscale bootstrap strict mode is not subshell-scoped")
+    print_pass(
+        "autoscaler Tailscale bootstrap cloud-init",
+        "wraps Tailscale strict mode without breaking heredoc syntax",
+    )
 
 
 def run_helm_checks(scratch: TerraformScratch) -> None:
@@ -765,6 +1126,61 @@ def run_node_annotation_cloudinit_checks(scratch: TerraformScratch) -> None:
         REPO_ROOT / "templates/autoscaler-cloudinit.yaml.tpl",
     )
     assert_node_annotation_payload("node annotations autoscaler cloud-init", document, rendered)
+
+
+def run_autoscaler_overlay_node_ip_checks() -> None:
+    overlay_vars = base_render_vars()
+    overlay_vars.update(
+        {
+            "cluster_has_ipv4": True,
+            "cluster_has_ipv6": True,
+            "multinetwork_public_overlay_enabled": True,
+            "multinetwork_transport_ipv4_enabled": True,
+            "multinetwork_transport_ipv6_enabled": True,
+        }
+    )
+    rendered, document = render_cloudinit_with_vars(
+        overlay_vars,
+        REPO_ROOT / "templates/autoscaler-cloudinit.yaml.tpl",
+    )
+    runcmd = document.get("runcmd")
+    if not isinstance(runcmd, list):
+        fail("autoscaler overlay dual-stack cloud-init", "runcmd is not a list")
+    overlay_script = next(
+        (item for item in runcmd if isinstance(item, str) and "OVERLAY_NODE_IPS" in item),
+        "",
+    )
+    if not overlay_script:
+        fail("autoscaler overlay dual-stack cloud-init", "rendered runcmd has no overlay node-ip script")
+    if any(isinstance(item, str) and "AUTOSCALER_NODE_PRIVATE_IP" in item for item in runcmd):
+        fail("autoscaler overlay dual-stack cloud-init", "overlay render unexpectedly includes standard node-ip script")
+    bash_syntax_check("autoscaler overlay dual-stack cloud-init", overlay_script)
+    snippets = {
+        "strict shell mode": "set -euo pipefail",
+        "strict shell mode scoped": ") || exit 1",
+        "IPv4 retry loop": "for attempt in $(seq 1 60); do",
+        "IPv4 route probe tolerates retry": "ip -4 route get 172.31.1.1 2>/dev/null | route_dev || true",
+        "IPv6 route probe tolerates retry": "ip -6 route show default 2>/dev/null | route_dev || true",
+        "IPv4 fail-closed check": "requires a public IPv4 address",
+        "IPv6 fail-closed check": "requires a public IPv6 address",
+        "IPv4 cluster-family node-ip assignment": 'OVERLAY_NODE_IPS="$PUB4_IP"',
+        "IPv6 cluster-family node-ip append": 'OVERLAY_NODE_IPS="$OVERLAY_NODE_IPS,$PUB6_IP"',
+        "transport-family node-external-ip assignment": 'OVERLAY_NODE_EXTERNAL_IPS="$PUB4_IP"',
+        "transport-family node-external-ip append": 'OVERLAY_NODE_EXTERNAL_IPS="$OVERLAY_NODE_EXTERNAL_IPS,$PUB6_IP"',
+        "node-ip write": 'printf \'node-ip: "%s"\\n\' "$OVERLAY_NODE_IPS"',
+        "node-external-ip write": 'printf \'node-external-ip: "%s"\\n\' "$OVERLAY_NODE_EXTERNAL_IPS"',
+        "old node-ip removal": 'sed -i \'/^node-ip:/d;/^"node-ip":/d;/^node-external-ip:/d;/^"node-external-ip":/d\' /tmp/config.yaml',
+    }
+    for label, snippet in snippets.items():
+        if snippet not in overlay_script:
+            fail("autoscaler overlay dual-stack cloud-init", f"missing {label}: {snippet}")
+    if "WARN: cilium_public_overlay could not determine a public node IP" in overlay_script:
+        fail("autoscaler overlay dual-stack cloud-init", "partial public node-ip discovery still only warns")
+    run_autoscaler_overlay_retry_simulation(overlay_script)
+    print_pass(
+        "autoscaler overlay dual-stack cloud-init",
+        "renders fail-closed IPv4/IPv6 discovery before writing node-ip and node-external-ip",
+    )
 
 
 def split_yaml_documents(manifest: str) -> list[str]:
@@ -1026,10 +1442,14 @@ def main() -> int:
         scratch = TerraformScratch(temp_dir, base_render_vars())
         assert_addon_default_versions()
         assert_agent_private_ipv4_contract(scratch)
+        assert_opensuse_ssh_cloudinit_contract()
         run_helm_checks(scratch)
         run_shell_checks(scratch)
         run_cloudinit_checks(scratch)
         run_node_annotation_cloudinit_checks(scratch)
+        run_autoscaler_standard_node_ip_checks()
+        run_autoscaler_tailscale_bootstrap_scope_checks()
+        run_autoscaler_overlay_node_ip_checks()
         run_autoscaler_manifest_checks(scratch)
         run_kubeconfig_checks(scratch)
         run_kustomization_path_checks(scratch)

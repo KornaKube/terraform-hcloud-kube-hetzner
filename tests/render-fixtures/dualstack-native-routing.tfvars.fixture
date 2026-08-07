@@ -1,0 +1,4 @@
+cluster_ipv6_cidr   = "fd00:42::/56"
+service_ipv6_cidr   = "fd00:43::/112"
+cni_plugin          = "cilium"
+cilium_routing_mode = "native"

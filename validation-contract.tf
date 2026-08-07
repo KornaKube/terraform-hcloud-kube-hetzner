@@ -137,22 +137,14 @@ resource "terraform_data" "validation_contract" {
         var.multinetwork_mode != "cilium_public_overlay" ||
         !contains(["ipv4", "dualstack"], var.multinetwork_transport_ip_family) ||
         (
-          (length(var.autoscaler_nodepools) == 0 || var.autoscaler_enable_public_ipv4) &&
+          (local.autoscaler_max_count == 0 || var.autoscaler_enable_public_ipv4) &&
           alltrue([
-            for control_plane_nodepool in var.control_plane_nodepools :
-            control_plane_nodepool.enable_public_ipv4 &&
-            alltrue([
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              coalesce(control_plane_node.enable_public_ipv4, control_plane_nodepool.enable_public_ipv4)
-            ])
+            for _, control_plane_node in local.control_plane_nodes :
+            !control_plane_node.disable_ipv4
           ]) &&
           alltrue([
-            for agent_nodepool in var.agent_nodepools :
-            agent_nodepool.enable_public_ipv4 &&
-            alltrue([
-              for _, agent_node in coalesce(agent_nodepool.nodes, {}) :
-              coalesce(agent_node.enable_public_ipv4, agent_nodepool.enable_public_ipv4)
-            ])
+            for _, agent_node in local.agent_nodes :
+            !agent_node.disable_ipv4
           ])
         )
       )
@@ -165,26 +157,100 @@ resource "terraform_data" "validation_contract" {
         var.multinetwork_mode != "cilium_public_overlay" ||
         !contains(["ipv6", "dualstack"], var.multinetwork_transport_ip_family) ||
         (
-          (length(var.autoscaler_nodepools) == 0 || var.autoscaler_enable_public_ipv6) &&
+          (local.autoscaler_max_count == 0 || var.autoscaler_enable_public_ipv6) &&
           alltrue([
-            for control_plane_nodepool in var.control_plane_nodepools :
-            control_plane_nodepool.enable_public_ipv6 &&
-            alltrue([
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              coalesce(control_plane_node.enable_public_ipv6, control_plane_nodepool.enable_public_ipv6)
-            ])
+            for _, control_plane_node in local.control_plane_nodes :
+            !control_plane_node.disable_ipv6
           ]) &&
           alltrue([
-            for agent_nodepool in var.agent_nodepools :
-            agent_nodepool.enable_public_ipv6 &&
-            alltrue([
-              for _, agent_node in coalesce(agent_nodepool.nodes, {}) :
-              coalesce(agent_node.enable_public_ipv6, agent_nodepool.enable_public_ipv6)
-            ])
+            for _, agent_node in local.agent_nodes :
+            !agent_node.disable_ipv6
           ])
         )
       )
       error_message = "multinetwork_mode=\"cilium_public_overlay\" with IPv6 or dual-stack transport requires public IPv6 enabled on all control-plane and agent nodes, plus autoscaler nodes when autoscaler_nodepools are configured."
+    }
+
+    # IPv6 pod/service CIDRs require every node to advertise an IPv6 node-ip.
+    # Hetzner Cloud Networks are IPv4-only, so that address is the node's public
+    # IPv6. Without it, node-ip stays IPv4-only and k3s/RKE2 refuse to start with
+    # "cluster-cidr: [...] and node-ip: [...], must share the same IP version",
+    # which is hard to trace back to this setting.
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        (
+          var.nat_router == null &&
+          alltrue([
+            for _, control_plane_node in local.control_plane_nodes :
+            !control_plane_node.disable_ipv6
+          ]) &&
+          alltrue([
+            for _, agent_node in local.agent_nodes :
+            !agent_node.disable_ipv6
+          ])
+        )
+      )
+      error_message = "cluster_ipv6_cidr/service_ipv6_cidr require effective public IPv6 on all control-plane and agent nodes, because Hetzner Cloud Networks are IPv4-only and the IPv6 half of node-ip must be the node's public address. nat_router is private-only and cannot be combined with IPv6 cluster CIDRs in this release."
+    }
+
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        try(trimspace(var.cluster_ipv4_cidr), "") != "" ||
+        local.multinetwork_overlay_enabled
+      )
+      error_message = "IPv6-only pod/service CIDRs are not supported on the standard private-network path in this release. Hetzner Cloud Networks are IPv4-only, so Cilium tunnel endpoints, cilium-health, and kubelet would move to public IPv6 without matching node-to-node firewall rules. Keep cluster_ipv4_cidr/service_ipv4_cidr set for dual-stack, or use the experimental public-overlay path."
+    }
+
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        var.node_transport_mode != "tailscale"
+      )
+      error_message = "node_transport_mode=\"tailscale\" cannot be combined with cluster_ipv6_cidr/service_ipv6_cidr in this release. Tailscale transport currently keeps Kubernetes node IPs on Hetzner private IPv4 addresses, while IPv6 cluster CIDRs require IPv6-aware node-ip rendering and datapath validation."
+    }
+
+    # Static nodes know their public IPv6 address at plan time. Autoscaler-created
+    # nodes do not in the standard private-network path. The experimental
+    # public-overlay path performs runtime public node-ip detection, so keep that
+    # explicitly opted-in lab path available.
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        local.multinetwork_overlay_enabled ||
+        alltrue([
+          for autoscaler_nodepool in var.autoscaler_nodepools :
+          autoscaler_nodepool.max_nodes <= 0
+        ])
+      )
+      error_message = "cluster_ipv6_cidr/service_ipv6_cidr with active autoscaler_nodepools currently requires multinetwork_mode=\"cilium_public_overlay\" so autoscaler nodes can derive a dual-stack node-ip at boot. For standard private-network dual-stack clusters, use static agent nodepools until autoscaler cloud-init supports runtime node-ip injection."
+    }
+
+    precondition {
+      condition = (
+        var.multinetwork_mode != "cilium_public_overlay" ||
+        try(trimspace(var.cluster_ipv4_cidr), "") == "" ||
+        contains(["ipv4", "dualstack"], var.multinetwork_transport_ip_family)
+      )
+      error_message = "multinetwork_mode=\"cilium_public_overlay\" must use IPv4 or dual-stack transport when cluster_ipv4_cidr/service_ipv4_cidr are enabled so node-ip includes the IPv4 cluster family."
+    }
+
+    precondition {
+      condition = (
+        var.multinetwork_mode != "cilium_public_overlay" ||
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        contains(["ipv6", "dualstack"], var.multinetwork_transport_ip_family)
+      )
+      error_message = "multinetwork_mode=\"cilium_public_overlay\" must use IPv6 or dual-stack transport when cluster_ipv6_cidr/service_ipv6_cidr are enabled so node-ip includes the IPv6 cluster family."
+    }
+
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        local.cilium_routing_mode_effective != "native"
+      )
+      error_message = "cluster_ipv6_cidr/service_ipv6_cidr cannot be used with cilium_routing_mode=\"native\" in this release. Hetzner Cloud Networks are IPv4-only and the module does not configure native IPv6 pod CIDR routing; use the default tunnel mode."
     }
 
     # Moved from variable "node_transport_mode" validation near variables.tf:453.
@@ -518,6 +584,14 @@ resource "terraform_data" "validation_contract" {
       error_message = "extra_robot_nodes currently supports only kubernetes_distribution = \"k3s\"."
     }
 
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        length(var.extra_robot_nodes) == 0
+      )
+      error_message = "extra_robot_nodes cannot be combined with cluster_ipv6_cidr/service_ipv6_cidr in this release because Robot nodes currently render an IPv4-only node-ip from private_ipv4."
+    }
+
     # Moved from variable "load_balancer_location" validation near variables.tf:1182.
     precondition {
       condition     = contains(flatten(values(local.validation_locations_by_region)), var.load_balancer_location)
@@ -573,48 +647,19 @@ resource "terraform_data" "validation_contract" {
     }
 
     # Moved from variable "control_plane_nodepools" validation near variables.tf:1498.
+    # Keep this on effective rendered nodes: nat_router and per-node overrides can
+    # disable public interfaces even when declared nodepool defaults still look public.
     precondition {
       condition = (
         var.control_plane_endpoint != null ||
         (var.enable_control_plane_load_balancer && var.control_plane_load_balancer_enable_public_network) ||
-        !(
-          var.multinetwork_mode == "cilium_public_overlay" ||
-          anytrue([
-            for control_plane_nodepool in var.control_plane_nodepools :
-            control_plane_nodepool.join_endpoint_type == "public" ||
-            anytrue([
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              control_plane_node.join_endpoint_type == "public"
-            ])
-          ]) ||
-          anytrue([
-            for agent_nodepool in var.agent_nodepools :
-            agent_nodepool.join_endpoint_type == "public" ||
-            anytrue([
-              for _, agent_node in coalesce(agent_nodepool.nodes, {}) :
-              agent_node.join_endpoint_type == "public"
-            ])
-          ]) ||
-          anytrue([
-            for autoscaler_nodepool in var.autoscaler_nodepools :
-            coalesce(autoscaler_nodepool.join_endpoint_type, "private") == "public"
-          ])
-        ) ||
-        alltrue(flatten([
-          for control_plane_nodepool in var.control_plane_nodepools : concat(
-            [
-              for _ in range(max(0, floor(coalesce(control_plane_nodepool.count, 0)))) :
-              control_plane_nodepool.enable_public_ipv4 || control_plane_nodepool.enable_public_ipv6
-            ],
-            [
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              coalesce(control_plane_node.enable_public_ipv4, control_plane_nodepool.enable_public_ipv4) ||
-              coalesce(control_plane_node.enable_public_ipv6, control_plane_nodepool.enable_public_ipv6)
-            ]
-          )
-        ]))
+        !local.public_join_endpoint_enabled ||
+        alltrue([
+          for _, control_plane_node in local.control_plane_nodes :
+          !control_plane_node.disable_ipv4 || !control_plane_node.disable_ipv6
+        ])
       )
-      error_message = "A public Kubernetes join endpoint without control_plane_endpoint or a public control-plane load balancer requires public IPv4 or IPv6 on every control-plane node."
+      error_message = "A public Kubernetes join endpoint without control_plane_endpoint or a public control-plane load balancer requires effective public IPv4 or IPv6 on every control-plane node. Private-only NAT router topologies must keep join_endpoint_type=\"private\" or set an explicit reachable control_plane_endpoint."
     }
 
     # Moved from variable "control_plane_nodepools" validation near variables.tf:1561.

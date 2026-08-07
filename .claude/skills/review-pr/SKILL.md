@@ -423,8 +423,8 @@ Rules by situation:
 
 1. **PR contains only the contributor's commits** → `--squash` is safe: GitHub sets the squash commit's *author* to the PR author (we are only the committer). This is the default path.
 2. **We pushed fix-up commits on top of their branch** → do NOT squash (squashing collapses authorship to a single author and can erase them). Use a merge commit (`gh pr merge --merge`) or rebase-merge (`--rebase`) so their original commits survive in history with their authorship intact.
-3. **We rework their contribution in our own branch/PR** (conflict resolution, adopting a patch from an issue, porting between master/staging) → `git cherry-pick` their original commit(s) FIRST so the `Author:` field stays theirs, then add our fixes as separate commits. If cherry-pick is impossible (e.g. the patch came as a diff/snippet in an issue), add a `Co-authored-by: Name <email>` trailer to our commit and credit them by handle in the commit message and changelog entry.
-4. **Promotion or major integration PRs** (for example a staging-to-master v3 release PR) → merge commit only. Never squash; the release contributor list depends on preserving every community author that already landed in the train.
+3. **We rework their contribution in our own branch/PR** (conflict resolution, adopting a patch from an issue, or porting between release trains) → `git cherry-pick` their original commit(s) FIRST so the `Author:` field stays theirs, then add our fixes as separate commits. If cherry-pick is impossible (e.g. the patch came as a diff/snippet in an issue), add a `Co-authored-by: Name <email>` trailer to our commit and credit them by handle in the commit message and changelog entry.
+4. **Promotion or major integration PRs** (for example a release-candidate PR carrying multiple community commits) → merge commit only. Never squash; the release contributor list depends on preserving every community author that already landed in the train.
 5. **Never** amend or reauthor a contributor's commit in a way that removes them from the history.
 
 Before merging, sanity-check: `git log --format='%an %ae' <range>` on what will land in master — the contributor's name must appear. After a release, verify they show up in the generated contributors section of the release body.
@@ -436,7 +436,7 @@ When a PR is **good and valuable, even if not perfect**, do NOT bounce it back w
 ```bash
 # 1. Fetch their work and create an integration branch off the PR's target
 git fetch origin pull/<num>/head:pr-<num>
-git checkout -b integrate/pr-<num> origin/<target>          # target = master or staging
+git checkout -b integrate/pr-<num> origin/<target>          # target = the PR base, normally master
 
 # 2. Merge THEIR branch first (preserves their commits + authorship — see credit rules)
 git merge pr-<num>                                          # resolve conflicts here if any
@@ -456,11 +456,11 @@ Notes:
 - Comment on the PR describing what we fixed on top, so the contributor learns from the delta instead of a review ping-pong. Tone matters: thank them by handle, frame the delta as building on their work (it is), and confirm their commit authorship is preserved so they appear in the release contributors. Kind, plain, human — contributors are volunteers.
 - Reserve "request changes and wait" for PRs that are: not valuable, architecturally wrong-direction (fixing = rewriting), security-suspect, or from the malicious-pattern category in repo agent guidance. Wrong-direction PRs may still donate salvageable commits via cherry-pick (credit rules case 3).
 
-## Never Merge Directly to Master
+## Never Push Unreviewed Integrations Directly to Master
 
-All PRs go through staging branches first:
+All multi-PR or maintainer-fixed integrations go through an integration branch first:
 
-1. Create staging branch
+1. Create an integration branch from the target branch
 2. Test thoroughly
 3. Get AI review (Codex + Gemini)
-4. Then merge to master
+4. Then open/merge the integration PR into the target branch with contributor authorship preserved

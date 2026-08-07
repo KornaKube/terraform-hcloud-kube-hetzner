@@ -9,6 +9,7 @@ sources such as images, locations, and server types.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -22,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_HCLOUD_TOKEN_ENV = "TF_VAR_hcloud_token"
 DEFAULT_TAILSCALE_KEY = "tskey-auth-smoke000000000000000000000000000000000000000000000000000000000000"
+SMOKE_SSH_PUBLIC_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBNRpZIW2YunUXUQx+1xr1qDh0BdKt1sTaZTgFLpL/op kh-smoke-plan-only"
 TRANSIENT_PLAN_ERRORS = (
     "TLS handshake timeout",
     "timeout error:",
@@ -116,8 +118,8 @@ def base_hcl(module_source: Path, scenario: Scenario) -> str:
           }}
 
           hcloud_token    = var.hcloud_token
-          ssh_public_key  = file("/Users/karim/.ssh/id_ed25519.pub")
-          ssh_private_key = file("/Users/karim/.ssh/id_ed25519")
+          ssh_public_key  = {json.dumps(SMOKE_SSH_PUBLIC_KEY)}
+          ssh_private_key = null
 
           cluster_name       = var.cluster_name
           network_region     = "eu-central"
@@ -195,6 +197,76 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
             expect_output=("data.http.gateway_api_standard_crds",),
         ),
         Scenario(
+            name="cilium-dualstack-static-valid",
+            extra_module_hcl="""
+            cni_plugin        = "cilium"
+            cluster_ipv6_cidr = "fd00:42::/56"
+            service_ipv6_cidr = "fd00:43::/112"
+            """,
+            expect_success=True,
+        ),
+        Scenario(
+            name="cilium-dualstack-rke2-static-valid",
+            extra_module_hcl="""
+            kubernetes_distribution = "rke2"
+            cni_plugin              = "cilium"
+            cluster_ipv6_cidr       = "fd00:42::/56"
+            service_ipv6_cidr       = "fd00:43::/112"
+            """,
+            expect_success=True,
+        ),
+        Scenario(
+            name="cilium-dualstack-dormant-pools-valid",
+            extra_module_hcl="""
+            cni_plugin        = "cilium"
+            cluster_ipv6_cidr = "fd00:42::/56"
+            service_ipv6_cidr = "fd00:43::/112"
+            """,
+            expect_success=True,
+            control_plane_nodepools_hcl="""
+            control_plane_nodepools = [
+              {
+                name        = "control-plane"
+                server_type = "cx23"
+                location    = "nbg1"
+                labels      = []
+                taints      = []
+                count       = 1
+              },
+              {
+                name               = "dormant-control-plane"
+                server_type        = "cx23"
+                location           = "nbg1"
+                labels             = []
+                taints             = []
+                count              = 0
+                enable_public_ipv6 = false
+              }
+            ]
+            """,
+            agent_nodepools_hcl="""
+            agent_nodepools = [
+              {
+                name        = "agent"
+                server_type = "cx23"
+                location    = "nbg1"
+                labels      = []
+                taints      = []
+                count       = 1
+              },
+              {
+                name               = "dormant-agent"
+                server_type        = "cx23"
+                location           = "nbg1"
+                labels             = []
+                taints             = []
+                count              = 0
+                enable_public_ipv6 = false
+              }
+            ]
+            """,
+        ),
+        Scenario(
             name="cilium-gateway-api-invalid-flannel",
             extra_module_hcl="""
             cni_plugin                 = "flannel"
@@ -264,7 +336,7 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
         Scenario(
             name="public-join-private-control-plane-invalid",
             extra_module_hcl="""
-            enable_control_plane_load_balancer              = true
+            enable_control_plane_load_balancer               = true
             control_plane_load_balancer_enable_public_network = false
             nat_router = {
               server_type = "cx23"
@@ -272,21 +344,7 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
             }
             """,
             expect_success=False,
-            expect_output=("A public Kubernetes join endpoint without control_plane_endpoint",),
-            control_plane_nodepools_hcl="""
-            control_plane_nodepools = [
-              {
-                name               = "control-plane"
-                server_type        = "cx23"
-                location           = "nbg1"
-                labels             = []
-                taints             = []
-                count              = 1
-                enable_public_ipv4 = false
-                enable_public_ipv6 = false
-              }
-            ]
-            """,
+            expect_output=("Private-only NAT router topologies must keep",),
             agent_nodepools_hcl="""
             agent_nodepools = [
               {
@@ -300,6 +358,18 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
               }
             ]
             """,
+        ),
+        Scenario(
+            name="nat-router-private-only-valid",
+            extra_module_hcl="""
+            enable_control_plane_load_balancer               = true
+            control_plane_load_balancer_enable_public_network = false
+            nat_router = {
+              server_type = "cx23"
+              location    = "nbg1"
+            }
+            """,
+            expect_success=True,
         ),
         Scenario(
             name="embedded-registry-k3s-valid",
@@ -825,52 +895,59 @@ def main() -> int:
     env[DEFAULT_HCLOUD_TOKEN_ENV] = token
 
     external_network_id = discover_external_network_id(env)
-    selected = [scenario for scenario in scenarios(external_network_id) if scenario_matches_filter(scenario.name, args.filter)]
+    scenario_list = scenarios(external_network_id)
+    unmatched_filters = [part for part in args.filter if not any(part in scenario.name for scenario in scenario_list)]
+    if unmatched_filters:
+        print(f"Unknown --filter values: {', '.join(unmatched_filters)}", file=sys.stderr)
+        return 2
+
+    selected = [scenario for scenario in scenario_list if scenario_matches_filter(scenario.name, args.filter)]
     if not selected:
         print("No smoke scenarios matched the requested filter.", file=sys.stderr)
         return 2
 
     failures: list[str] = []
     temp_roots: list[Path] = []
-    for scenario in selected:
-        root = Path(tempfile.mkdtemp(prefix=f"kh-{scenario.name}-"))
-        temp_roots.append(root)
-        if scenario.skip_reason:
-            print(f"SKIP {scenario.name}: {scenario.skip_reason}", flush=True)
-            continue
-        (root / "main.tf").write_text(base_hcl(args.module_source.resolve(), scenario), encoding="utf-8")
+    try:
+        for scenario in selected:
+            root = Path(tempfile.mkdtemp(prefix=f"kh-{scenario.name}-"))
+            temp_roots.append(root)
+            if scenario.skip_reason:
+                print(f"SKIP {scenario.name}: {scenario.skip_reason}", flush=True)
+                continue
+            (root / "main.tf").write_text(base_hcl(args.module_source.resolve(), scenario), encoding="utf-8")
 
-        init = run_init_with_retry(root, env)
-        if init.returncode != 0:
-            failures.append(f"{scenario.name}: terraform init failed\n{excerpt(init.stdout)}")
-            print(f"FAIL {scenario.name}: init failed", flush=True)
-            continue
+            init = run_init_with_retry(root, env)
+            if init.returncode != 0:
+                failures.append(f"{scenario.name}: terraform init failed\n{excerpt(init.stdout)}")
+                print(f"FAIL {scenario.name}: init failed", flush=True)
+                continue
 
-        plan = run_plan_with_retry(root, env)
-        output = plan.stdout
-        success = plan.returncode in (0, 2)
+            plan = run_plan_with_retry(root, env)
+            output = plan.stdout
+            success = plan.returncode in (0, 2)
 
-        if success != scenario.expect_success:
-            failures.append(
-                f"{scenario.name}: expected success={scenario.expect_success}, got returncode={plan.returncode}\n{excerpt(output)}"
-            )
-            print(f"FAIL {scenario.name}: unexpected {'success' if success else 'failure'}", flush=True)
-            continue
+            if success != scenario.expect_success:
+                failures.append(
+                    f"{scenario.name}: expected success={scenario.expect_success}, got returncode={plan.returncode}\n{excerpt(output)}"
+                )
+                print(f"FAIL {scenario.name}: unexpected {'success' if success else 'failure'}", flush=True)
+                continue
 
-        missing = [needle for needle in scenario.expect_output if needle not in output]
-        if missing:
-            failures.append(f"{scenario.name}: missing expected output {missing}\n{excerpt(output)}")
-            print(f"FAIL {scenario.name}: missing expected output", flush=True)
-            continue
+            missing = [needle for needle in scenario.expect_output if needle not in output]
+            if missing:
+                failures.append(f"{scenario.name}: missing expected output {missing}\n{excerpt(output)}")
+                print(f"FAIL {scenario.name}: missing expected output", flush=True)
+                continue
 
-        print(f"PASS {scenario.name}", flush=True)
-
-    if not args.keep_tmp:
-        for root in temp_roots:
-            shutil.rmtree(root, ignore_errors=True)
-    else:
-        for root in temp_roots:
-            print(f"kept {root}")
+            print(f"PASS {scenario.name}", flush=True)
+    finally:
+        if not args.keep_tmp:
+            for root in temp_roots:
+                shutil.rmtree(root, ignore_errors=True)
+        else:
+            for root in temp_roots:
+                print(f"kept {root}")
 
     if failures:
         print("\nv3 smoke plan matrix failed:")

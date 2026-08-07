@@ -23,7 +23,7 @@ MIN_EXECUTED_CASES = 3
 # A real HCloud token (read access suffices) is required to evaluate contracts
 # that depend on data sources (e.g. the server-type RAM map). Without one the
 # suite skips politely; WITH one, executed-case minimums are enforced.
-HCLOUD_TOKEN = os.environ.get("HCLOUD_TOKEN", "").strip()
+HCLOUD_TOKEN = (os.environ.get("HCLOUD_TOKEN", "").strip() or os.environ.get("TF_VAR_hcloud_token", "").strip())
 TOKEN_MODE = len(HCLOUD_TOKEN) == 64
 PLUGIN_CACHE_DIR = Path.home() / ".terraform.d/plugin-cache"
 CLI_CONFIG_FILE = FIXTURE_DIR / ".terraform/contract-negative-tests.tfrc"
@@ -83,6 +83,54 @@ CASES = [
         var_file=FIXTURE_DIR / "nat-without-cp-lb.tfvars.fixture",
         target="module.sut.terraform_data.validation_contract",
         expected_substring="When nat_router is enabled",
+    ),
+    Case(
+        name="public-join-nat-defaults",
+        var_file=FIXTURE_DIR / "public-join-nat-defaults-invalid.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="Private-only NAT router topologies must keep",
+    ),
+    Case(
+        name="dualstack-standard-autoscaler",
+        var_file=FIXTURE_DIR / "dualstack-standard-autoscaler.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring='currently requires multinetwork_mode="cilium_public_overlay"',
+    ),
+    Case(
+        name="dualstack-nat-router",
+        var_file=FIXTURE_DIR / "dualstack-nat-router.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="private-only and cannot be combined with IPv6 cluster CIDRs",
+    ),
+    Case(
+        name="public-overlay-ipv6-transport-mismatch",
+        var_file=FIXTURE_DIR / "public-overlay-ipv6-transport-mismatch.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="must use IPv6 or dual-stack",
+    ),
+    Case(
+        name="dualstack-native-routing",
+        var_file=FIXTURE_DIR / "dualstack-native-routing.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring='cilium_routing_mode="native"',
+    ),
+    Case(
+        name="ipv6only-standard-private-network",
+        var_file=FIXTURE_DIR / "ipv6only-standard-private-network.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="IPv6-only pod/service CIDRs are not supported",
+    ),
+    Case(
+        name="dualstack-robot-nodes",
+        var_file=FIXTURE_DIR / "dualstack-robot-nodes.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="extra_robot_nodes cannot be combined",
+    ),
+    Case(
+        name="dualstack-tailscale-transport",
+        var_file=FIXTURE_DIR / "dualstack-tailscale-transport.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring='node_transport_mode="tailscale" cannot be combined',
     ),
 ]
 
@@ -269,6 +317,9 @@ def main() -> int:
                 "provider-backed plan cannot load schemas here"
             )
         print(f"SKIP summary: 0 executed cases, {len(CASES)} skipped due sandbox socket policy")
+        if TOKEN_MODE:
+            print("FAIL summary: token-backed mode requires provider-backed cases to execute")
+            return 1
         return 0
 
     executed = 0
@@ -283,10 +334,11 @@ def main() -> int:
         else:
             failed += 1
 
-    if executed < MIN_EXECUTED_CASES:
+    required_executed_cases = len(CASES) if TOKEN_MODE else MIN_EXECUTED_CASES
+    if executed < required_executed_cases:
         print(
             f"FAIL summary: {executed} executed cases, {skipped} skipped; "
-            f"need at least {MIN_EXECUTED_CASES} executed cases"
+            f"need at least {required_executed_cases} executed cases"
         )
         failed += 1
     else:

@@ -116,7 +116,7 @@ grep 'variable "<name>"' variables.tf
 
 ### Current v3 Baseline
 
-Verify the live tag at startup; the checked-in release baseline is **v3.0.1**.
+Verify the live tag at startup; the checked-in release baseline is **v3.1.0**.
 
 | Fact | Current contract |
 |------|------------------|
@@ -185,11 +185,11 @@ Verify the live tag at startup; the checked-in release baseline is **v3.0.1**.
 
 - **Zero-agent post-apply plan failure (#2236, #2238):** v3.0.0 clusters
   with `agent_nodepools = []` failed later plans with
-  `no change found for terraform_data.agents`. Upgrade to v3.0.1; it routes
+  `no change found for terraform_data.agents`. Upgrade to v3.0.1 or later; it routes
   readiness triggers through a single agent-id aggregator, without replacing
   or rerunning post-install readiness during the upgrade.
 - **Static agents assigned to the wrong subnet (#2239):** v3.0.0 assigned
-  primary-network static agents from the control-plane subnet. v3.0.1 restores
+  primary-network static agents from the control-plane subnet. v3.0.1 or later restores
   per-nodepool addressing. Clusters first created on v3.0.0 require the release
   note's rolling agent migration: cordon/drain one agent, target-apply that
   agent's in-place private-NIC detach/reattach and k3s/RKE2 config restart,
@@ -567,6 +567,7 @@ tailscale_node_transport = {
 
 Rules to mention:
 - Tailscale mode requires explicit `network_scope = "primary"` or `"external"` on every active agent/autoscaler nodepool. Use `"primary"` when `network_id` is omitted/null; use `"external"` with external `network_id`, including same-root `hcloud_network.*.id`.
+- Tailscale node transport is rejected with `cluster_ipv6_cidr` / `service_ipv6_cidr` in this release; keep IPv6 pod/service CIDRs unset on Tailscale clusters.
 - Tailnet ACLs must auto-approve advertised Hetzner node-private `/32` routes when external `network_scope` nodepools are used.
 - The module disables Tailscale subnet-route SNAT for node/CNI traffic.
 - Flannel VXLAN is first supported; Cilium needs the experimental flag; Calico is rejected.

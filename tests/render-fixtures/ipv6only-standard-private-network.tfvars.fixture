@@ -1,0 +1,5 @@
+cluster_ipv4_cidr = ""
+service_ipv4_cidr = ""
+cluster_ipv6_cidr = "fd00:42::/56"
+service_ipv6_cidr = "fd00:43::/112"
+cni_plugin        = "cilium"
