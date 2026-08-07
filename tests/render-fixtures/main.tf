@@ -42,22 +42,23 @@ module "sut" {
   enable_rancher                   = false
   enable_system_upgrade_controller = false
 
-  ingress_controller                        = var.ingress_controller
-  enable_klipper_metal_lb                   = false
-  enable_control_plane_load_balancer        = var.enable_control_plane_load_balancer
-  control_plane_endpoint                    = var.control_plane_endpoint
-  multinetwork_mode                         = var.multinetwork_mode
-  enable_experimental_cilium_public_overlay = var.enable_experimental_cilium_public_overlay
-  multinetwork_transport_ip_family          = var.multinetwork_transport_ip_family
-  node_transport_mode                       = var.node_transport_mode
-  firewall_kube_api_source                  = var.firewall_kube_api_source
-  firewall_ssh_source                       = var.firewall_ssh_source
-  tailscale_auth_key                        = var.tailscale_auth_key
-  tailscale_node_transport                  = var.tailscale_node_transport
-  cluster_ipv4_cidr                         = var.cluster_ipv4_cidr
-  service_ipv4_cidr                         = var.service_ipv4_cidr
-  cluster_ipv6_cidr                         = var.cluster_ipv6_cidr
-  service_ipv6_cidr                         = var.service_ipv6_cidr
+  ingress_controller                                = var.ingress_controller
+  enable_klipper_metal_lb                           = false
+  enable_control_plane_load_balancer                = var.enable_control_plane_load_balancer
+  control_plane_load_balancer_enable_public_network = var.control_plane_load_balancer_enable_public_network
+  control_plane_endpoint                            = var.control_plane_endpoint
+  multinetwork_mode                                 = var.multinetwork_mode
+  enable_experimental_cilium_public_overlay         = var.enable_experimental_cilium_public_overlay
+  multinetwork_transport_ip_family                  = var.multinetwork_transport_ip_family
+  node_transport_mode                               = var.node_transport_mode
+  firewall_kube_api_source                          = var.firewall_kube_api_source
+  firewall_ssh_source                               = var.firewall_ssh_source
+  tailscale_auth_key                                = var.tailscale_auth_key
+  tailscale_node_transport                          = var.tailscale_node_transport
+  cluster_ipv4_cidr                                 = var.cluster_ipv4_cidr
+  service_ipv4_cidr                                 = var.service_ipv4_cidr
+  cluster_ipv6_cidr                                 = var.cluster_ipv6_cidr
+  service_ipv6_cidr                                 = var.service_ipv6_cidr
 
   nginx_values       = var.nginx_values
   nginx_merge_values = var.nginx_merge_values
@@ -102,6 +103,11 @@ variable "ingress_controller" {
 variable "enable_control_plane_load_balancer" {
   type    = bool
   default = false
+}
+
+variable "control_plane_load_balancer_enable_public_network" {
+  type    = bool
+  default = true
 }
 
 variable "control_plane_endpoint" {

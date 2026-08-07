@@ -290,6 +290,30 @@ def assert_agent_private_ipv4_contract(scratch: "TerraformScratch") -> None:
     )
 
 
+def assert_opensuse_ssh_cloudinit_contract() -> None:
+    """Protect the openSUSE SSH/PAM fix from regressing silently."""
+
+    locals_source = LOCALS_TF.read_text(encoding="utf-8")
+    normalized = normalize_hcl(locals_source)
+    required_fragments = (
+        "path:/etc/ssh/sshd_config.d/kube-hetzner.conf",
+        "Port${var.ssh_port}",
+        "UsePAMyes",
+        "PasswordAuthenticationno",
+        "KbdInteractiveAuthenticationno",
+        "AuthorizedKeysFile.ssh/authorized_keys",
+    )
+    missing = [fragment for fragment in required_fragments if fragment not in normalized]
+    if missing:
+        fail("openSUSE SSH cloud-init contract", f"missing fragments: {missing!r}")
+    if "ssh_pwauth" in locals_source:
+        fail("openSUSE SSH cloud-init contract", "ssh_pwauth must remain absent so openSUSE vendor sshd_config keeps PAM")
+    print_pass(
+        "openSUSE SSH cloud-init contract",
+        "shared drop-in keeps PAM and disables password/keyboard-interactive auth without ssh_pwauth",
+    )
+
+
 def base_render_vars() -> dict[str, Any]:
     var_values = {
         "audit_log_path": "/var/log/kubernetes/audit.log",
@@ -780,11 +804,25 @@ def run_autoscaler_overlay_node_ip_checks() -> None:
             "multinetwork_transport_ipv6_enabled": True,
         }
     )
-    rendered, _ = render_cloudinit_with_vars(
+    rendered, document = render_cloudinit_with_vars(
         overlay_vars,
         REPO_ROOT / "templates/autoscaler-cloudinit.yaml.tpl",
     )
+    runcmd = document.get("runcmd")
+    if not isinstance(runcmd, list):
+        fail("autoscaler overlay dual-stack cloud-init", "runcmd is not a list")
+    overlay_script = next(
+        (item for item in runcmd if isinstance(item, str) and "OVERLAY_NODE_IPS" in item),
+        "",
+    )
+    if not overlay_script:
+        fail("autoscaler overlay dual-stack cloud-init", "rendered runcmd has no overlay node-ip script")
+    bash_syntax_check("autoscaler overlay dual-stack cloud-init", overlay_script)
     snippets = {
+        "strict shell mode": "set -euo pipefail",
+        "IPv4 retry loop": "for attempt in $(seq 1 60); do",
+        "IPv4 fail-closed check": "requires a public IPv4 address",
+        "IPv6 fail-closed check": "requires a public IPv6 address",
         "IPv4 cluster-family node-ip assignment": 'OVERLAY_NODE_IPS="$PUB4_IP"',
         "IPv6 cluster-family node-ip append": 'OVERLAY_NODE_IPS="$OVERLAY_NODE_IPS,$PUB6_IP"',
         "transport-family node-external-ip assignment": 'OVERLAY_NODE_EXTERNAL_IPS="$PUB4_IP"',
@@ -793,11 +831,13 @@ def run_autoscaler_overlay_node_ip_checks() -> None:
         "node-external-ip write": 'printf \'node-external-ip: "%s"\\n\' "$OVERLAY_NODE_EXTERNAL_IPS"',
     }
     for label, snippet in snippets.items():
-        if snippet not in rendered:
+        if snippet not in overlay_script:
             fail("autoscaler overlay dual-stack cloud-init", f"missing {label}: {snippet}")
+    if "WARN: cilium_public_overlay could not determine a public node IP" in overlay_script:
+        fail("autoscaler overlay dual-stack cloud-init", "partial public node-ip discovery still only warns")
     print_pass(
         "autoscaler overlay dual-stack cloud-init",
-        "renders IPv4/IPv6 node-ip and node-external-ip update paths separately",
+        "renders fail-closed IPv4/IPv6 discovery before writing node-ip and node-external-ip",
     )
 
 
@@ -1060,6 +1100,7 @@ def main() -> int:
         scratch = TerraformScratch(temp_dir, base_render_vars())
         assert_addon_default_versions()
         assert_agent_private_ipv4_contract(scratch)
+        assert_opensuse_ssh_cloudinit_contract()
         run_helm_checks(scratch)
         run_shell_checks(scratch)
         run_cloudinit_checks(scratch)

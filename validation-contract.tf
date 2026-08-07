@@ -647,48 +647,19 @@ resource "terraform_data" "validation_contract" {
     }
 
     # Moved from variable "control_plane_nodepools" validation near variables.tf:1498.
+    # Keep this on effective rendered nodes: nat_router and per-node overrides can
+    # disable public interfaces even when declared nodepool defaults still look public.
     precondition {
       condition = (
         var.control_plane_endpoint != null ||
         (var.enable_control_plane_load_balancer && var.control_plane_load_balancer_enable_public_network) ||
-        !(
-          var.multinetwork_mode == "cilium_public_overlay" ||
-          anytrue([
-            for control_plane_nodepool in var.control_plane_nodepools :
-            control_plane_nodepool.join_endpoint_type == "public" ||
-            anytrue([
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              control_plane_node.join_endpoint_type == "public"
-            ])
-          ]) ||
-          anytrue([
-            for agent_nodepool in var.agent_nodepools :
-            agent_nodepool.join_endpoint_type == "public" ||
-            anytrue([
-              for _, agent_node in coalesce(agent_nodepool.nodes, {}) :
-              agent_node.join_endpoint_type == "public"
-            ])
-          ]) ||
-          anytrue([
-            for autoscaler_nodepool in var.autoscaler_nodepools :
-            coalesce(autoscaler_nodepool.join_endpoint_type, "private") == "public"
-          ])
-        ) ||
-        alltrue(flatten([
-          for control_plane_nodepool in var.control_plane_nodepools : concat(
-            [
-              for _ in range(max(0, floor(coalesce(control_plane_nodepool.count, 0)))) :
-              control_plane_nodepool.enable_public_ipv4 || control_plane_nodepool.enable_public_ipv6
-            ],
-            [
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              coalesce(control_plane_node.enable_public_ipv4, control_plane_nodepool.enable_public_ipv4) ||
-              coalesce(control_plane_node.enable_public_ipv6, control_plane_nodepool.enable_public_ipv6)
-            ]
-          )
-        ]))
+        !local.public_join_endpoint_enabled ||
+        alltrue([
+          for _, control_plane_node in local.control_plane_nodes :
+          !control_plane_node.disable_ipv4 || !control_plane_node.disable_ipv6
+        ])
       )
-      error_message = "A public Kubernetes join endpoint without control_plane_endpoint or a public control-plane load balancer requires public IPv4 or IPv6 on every control-plane node."
+      error_message = "A public Kubernetes join endpoint without control_plane_endpoint or a public control-plane load balancer requires effective public IPv4 or IPv6 on every control-plane node. Private-only NAT router topologies must keep join_endpoint_type=\"private\" or set an explicit reachable control_plane_endpoint."
     }
 
     # Moved from variable "control_plane_nodepools" validation near variables.tf:1561.

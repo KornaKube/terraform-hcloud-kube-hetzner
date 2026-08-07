@@ -85,6 +85,12 @@ CASES = [
         expected_substring="When nat_router is enabled",
     ),
     Case(
+        name="public-join-nat-defaults",
+        var_file=FIXTURE_DIR / "public-join-nat-defaults-invalid.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="Private-only NAT router topologies must keep",
+    ),
+    Case(
         name="dualstack-standard-autoscaler",
         var_file=FIXTURE_DIR / "dualstack-standard-autoscaler.tfvars.fixture",
         target="module.sut.terraform_data.validation_contract",

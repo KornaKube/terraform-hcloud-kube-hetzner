@@ -204,6 +204,16 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
             expect_success=True,
         ),
         Scenario(
+            name="cilium-dualstack-rke2-static-valid",
+            extra_module_hcl="""
+            kubernetes_distribution = "rke2"
+            cni_plugin              = "cilium"
+            cluster_ipv6_cidr       = "fd00:42::/56"
+            service_ipv6_cidr       = "fd00:43::/112"
+            """,
+            expect_success=True,
+        ),
+        Scenario(
             name="cilium-dualstack-dormant-pools-valid",
             extra_module_hcl="""
             cni_plugin        = "cilium"
@@ -324,7 +334,7 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
         Scenario(
             name="public-join-private-control-plane-invalid",
             extra_module_hcl="""
-            enable_control_plane_load_balancer              = true
+            enable_control_plane_load_balancer               = true
             control_plane_load_balancer_enable_public_network = false
             nat_router = {
               server_type = "cx23"
@@ -332,21 +342,7 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
             }
             """,
             expect_success=False,
-            expect_output=("A public Kubernetes join endpoint without control_plane_endpoint",),
-            control_plane_nodepools_hcl="""
-            control_plane_nodepools = [
-              {
-                name               = "control-plane"
-                server_type        = "cx23"
-                location           = "nbg1"
-                labels             = []
-                taints             = []
-                count              = 1
-                enable_public_ipv4 = false
-                enable_public_ipv6 = false
-              }
-            ]
-            """,
+            expect_output=("Private-only NAT router topologies must keep",),
             agent_nodepools_hcl="""
             agent_nodepools = [
               {

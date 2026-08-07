@@ -1,0 +1,20 @@
+enable_control_plane_load_balancer               = true
+control_plane_load_balancer_enable_public_network = false
+
+nat_router = {
+  server_type = "cx23"
+  location    = "nbg1"
+}
+
+agent_nodepools = [
+  {
+    name               = "agent"
+    server_type        = "cx23"
+    location           = "nbg1"
+    labels             = []
+    taints             = []
+    count              = 1
+    os                 = "leapmicro"
+    join_endpoint_type = "public"
+  }
+]
