@@ -3420,6 +3420,7 @@ cloudinit_write_files_common = <<EOT
     Port ${var.ssh_port}
     UsePAM yes
     PasswordAuthentication no
+    KbdInteractiveAuthentication no
     X11Forwarding no
     MaxAuthTries ${var.ssh_max_auth_tries}
     AllowTcpForwarding no

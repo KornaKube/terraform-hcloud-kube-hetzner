@@ -195,6 +195,15 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
             expect_output=("data.http.gateway_api_standard_crds",),
         ),
         Scenario(
+            name="cilium-dualstack-static-valid",
+            extra_module_hcl="""
+            cni_plugin        = "cilium"
+            cluster_ipv6_cidr = "fd00:42::/56"
+            service_ipv6_cidr = "fd00:43::/112"
+            """,
+            expect_success=True,
+        ),
+        Scenario(
             name="cilium-gateway-api-invalid-flannel",
             extra_module_hcl="""
             cni_plugin                 = "flannel"
