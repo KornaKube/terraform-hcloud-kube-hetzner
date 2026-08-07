@@ -137,22 +137,14 @@ resource "terraform_data" "validation_contract" {
         var.multinetwork_mode != "cilium_public_overlay" ||
         !contains(["ipv4", "dualstack"], var.multinetwork_transport_ip_family) ||
         (
-          (length(var.autoscaler_nodepools) == 0 || var.autoscaler_enable_public_ipv4) &&
+          (local.autoscaler_max_count == 0 || var.autoscaler_enable_public_ipv4) &&
           alltrue([
-            for control_plane_nodepool in var.control_plane_nodepools :
-            control_plane_nodepool.enable_public_ipv4 &&
-            alltrue([
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              coalesce(control_plane_node.enable_public_ipv4, control_plane_nodepool.enable_public_ipv4)
-            ])
+            for _, control_plane_node in local.control_plane_nodes :
+            !control_plane_node.disable_ipv4
           ]) &&
           alltrue([
-            for agent_nodepool in var.agent_nodepools :
-            agent_nodepool.enable_public_ipv4 &&
-            alltrue([
-              for _, agent_node in coalesce(agent_nodepool.nodes, {}) :
-              coalesce(agent_node.enable_public_ipv4, agent_nodepool.enable_public_ipv4)
-            ])
+            for _, agent_node in local.agent_nodes :
+            !agent_node.disable_ipv4
           ])
         )
       )
@@ -165,22 +157,14 @@ resource "terraform_data" "validation_contract" {
         var.multinetwork_mode != "cilium_public_overlay" ||
         !contains(["ipv6", "dualstack"], var.multinetwork_transport_ip_family) ||
         (
-          (length(var.autoscaler_nodepools) == 0 || var.autoscaler_enable_public_ipv6) &&
+          (local.autoscaler_max_count == 0 || var.autoscaler_enable_public_ipv6) &&
           alltrue([
-            for control_plane_nodepool in var.control_plane_nodepools :
-            control_plane_nodepool.enable_public_ipv6 &&
-            alltrue([
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              coalesce(control_plane_node.enable_public_ipv6, control_plane_nodepool.enable_public_ipv6)
-            ])
+            for _, control_plane_node in local.control_plane_nodes :
+            !control_plane_node.disable_ipv6
           ]) &&
           alltrue([
-            for agent_nodepool in var.agent_nodepools :
-            agent_nodepool.enable_public_ipv6 &&
-            alltrue([
-              for _, agent_node in coalesce(agent_nodepool.nodes, {}) :
-              coalesce(agent_node.enable_public_ipv6, agent_nodepool.enable_public_ipv6)
-            ])
+            for _, agent_node in local.agent_nodes :
+            !agent_node.disable_ipv6
           ])
         )
       )
@@ -198,20 +182,12 @@ resource "terraform_data" "validation_contract" {
         (
           var.nat_router == null &&
           alltrue([
-            for control_plane_nodepool in var.control_plane_nodepools :
-            control_plane_nodepool.enable_public_ipv6 &&
-            alltrue([
-              for _, control_plane_node in coalesce(control_plane_nodepool.nodes, {}) :
-              coalesce(control_plane_node.enable_public_ipv6, control_plane_nodepool.enable_public_ipv6)
-            ])
+            for _, control_plane_node in local.control_plane_nodes :
+            !control_plane_node.disable_ipv6
           ]) &&
           alltrue([
-            for agent_nodepool in var.agent_nodepools :
-            agent_nodepool.enable_public_ipv6 &&
-            alltrue([
-              for _, agent_node in coalesce(agent_nodepool.nodes, {}) :
-              coalesce(agent_node.enable_public_ipv6, agent_nodepool.enable_public_ipv6)
-            ])
+            for _, agent_node in local.agent_nodes :
+            !agent_node.disable_ipv6
           ])
         )
       )

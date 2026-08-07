@@ -324,8 +324,8 @@ module "kube-hetzner" {
       location    = "hel1",
       labels      = [],
       # annotations = {}
-      taints      = [],
-      count       = 1
+      taints = [],
+      count  = 1
 
       # Fine-grained control over placement groups. Leave unset to auto-shard count-based nodepools every 10 servers.
       # Explicit placement_group values must stay at 10 servers or fewer, and the project cap is 50 placement groups:
@@ -353,8 +353,8 @@ module "kube-hetzner" {
       # annotations = {
       #   "node.longhorn.io/default-disks-config" = "[{\"path\":\"/var/lib/longhorn\",\"allowScheduling\":true}]"
       # }
-      taints      = [],
-      count       = 1
+      taints = [],
+      count  = 1
       # os          = "leapmicro" # valid: "leapmicro" | "microos"
       # subnet_ip_range = "10.0.0.0/16"  # Optional: override default subnet range
       # swap_size   = "2G" # remember to add the suffix, examples: 512M, 1G

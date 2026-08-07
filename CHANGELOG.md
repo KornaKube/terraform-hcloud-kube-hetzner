@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed non-empty `registries_config` rendering with Terraform/OpenTofu by keeping the conditional result type consistent (#2241, #2242; thanks @prochac).
 - Fixed private-only clusters whose public control-plane host is intentionally absent so plans no longer fail with a `coalesce` error (#2248, #2249; thanks @elkh510).
 - Fixed new/replaced openSUSE nodes losing SSH access when cloud-init generated a minimal `/etc/ssh/sshd_config` from `ssh_pwauth: false`, which hid the vendor `UsePAM yes` setting (#2252; thanks @steache).
+- Fixed IPv6/dual-stack validation so dormant `count = 0` control-plane or agent nodepools do not block otherwise valid plans.
 
 ### 🔧 Changes
 

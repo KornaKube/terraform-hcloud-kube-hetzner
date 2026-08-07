@@ -204,6 +204,57 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
             expect_success=True,
         ),
         Scenario(
+            name="cilium-dualstack-dormant-pools-valid",
+            extra_module_hcl="""
+            cni_plugin        = "cilium"
+            cluster_ipv6_cidr = "fd00:42::/56"
+            service_ipv6_cidr = "fd00:43::/112"
+            """,
+            expect_success=True,
+            control_plane_nodepools_hcl="""
+            control_plane_nodepools = [
+              {
+                name        = "control-plane"
+                server_type = "cx23"
+                location    = "nbg1"
+                labels      = []
+                taints      = []
+                count       = 1
+              },
+              {
+                name               = "dormant-control-plane"
+                server_type        = "cx23"
+                location           = "nbg1"
+                labels             = []
+                taints             = []
+                count              = 0
+                enable_public_ipv6 = false
+              }
+            ]
+            """,
+            agent_nodepools_hcl="""
+            agent_nodepools = [
+              {
+                name        = "agent"
+                server_type = "cx23"
+                location    = "nbg1"
+                labels      = []
+                taints      = []
+                count       = 1
+              },
+              {
+                name               = "dormant-agent"
+                server_type        = "cx23"
+                location           = "nbg1"
+                labels             = []
+                taints             = []
+                count              = 0
+                enable_public_ipv6 = false
+              }
+            ]
+            """,
+        ),
+        Scenario(
             name="cilium-gateway-api-invalid-flannel",
             extra_module_hcl="""
             cni_plugin                 = "flannel"
