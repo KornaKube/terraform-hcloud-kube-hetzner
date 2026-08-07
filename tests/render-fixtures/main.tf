@@ -49,6 +49,11 @@ module "sut" {
   multinetwork_mode                         = var.multinetwork_mode
   enable_experimental_cilium_public_overlay = var.enable_experimental_cilium_public_overlay
   multinetwork_transport_ip_family          = var.multinetwork_transport_ip_family
+  node_transport_mode                       = var.node_transport_mode
+  firewall_kube_api_source                  = var.firewall_kube_api_source
+  firewall_ssh_source                       = var.firewall_ssh_source
+  tailscale_auth_key                        = var.tailscale_auth_key
+  tailscale_node_transport                  = var.tailscale_node_transport
   cluster_ipv4_cidr                         = var.cluster_ipv4_cidr
   service_ipv4_cidr                         = var.service_ipv4_cidr
   cluster_ipv6_cidr                         = var.cluster_ipv6_cidr
@@ -117,6 +122,31 @@ variable "enable_experimental_cilium_public_overlay" {
 variable "multinetwork_transport_ip_family" {
   type    = string
   default = "ipv4"
+}
+
+variable "node_transport_mode" {
+  type    = string
+  default = "hetzner_private"
+}
+
+variable "firewall_kube_api_source" {
+  type    = any
+  default = ["0.0.0.0/0", "::/0"]
+}
+
+variable "firewall_ssh_source" {
+  type    = any
+  default = ["0.0.0.0/0", "::/0"]
+}
+
+variable "tailscale_auth_key" {
+  type    = string
+  default = null
+}
+
+variable "tailscale_node_transport" {
+  type    = any
+  default = {}
 }
 
 variable "cluster_ipv4_cidr" {

@@ -227,6 +227,14 @@ resource "terraform_data" "validation_contract" {
       error_message = "IPv6-only pod/service CIDRs are not supported on the standard private-network path in this release. Hetzner Cloud Networks are IPv4-only, so Cilium tunnel endpoints, cilium-health, and kubelet would move to public IPv6 without matching node-to-node firewall rules. Keep cluster_ipv4_cidr/service_ipv4_cidr set for dual-stack, or use the experimental public-overlay path."
     }
 
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        var.node_transport_mode != "tailscale"
+      )
+      error_message = "node_transport_mode=\"tailscale\" cannot be combined with cluster_ipv6_cidr/service_ipv6_cidr in this release. Tailscale transport currently keeps Kubernetes node IPs on Hetzner private IPv4 addresses, while IPv6 cluster CIDRs require IPv6-aware node-ip rendering and datapath validation."
+    }
+
     # Static nodes know their public IPv6 address at plan time. Autoscaler-created
     # nodes do not in the standard private-network path. The experimental
     # public-overlay path performs runtime public node-ip detection, so keep that

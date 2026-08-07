@@ -116,7 +116,7 @@ grep 'variable "<name>"' variables.tf
 
 ### Current v3 Baseline
 
-Verify the live tag at startup; the checked-in release baseline is **v3.0.1**.
+Verify the live tag at startup; the checked-in release baseline is **v3.1.0**.
 
 | Fact | Current contract |
 |------|------------------|
@@ -567,6 +567,7 @@ tailscale_node_transport = {
 
 Rules to mention:
 - Tailscale mode requires explicit `network_scope = "primary"` or `"external"` on every active agent/autoscaler nodepool. Use `"primary"` when `network_id` is omitted/null; use `"external"` with external `network_id`, including same-root `hcloud_network.*.id`.
+- Tailscale node transport is rejected with `cluster_ipv6_cidr` / `service_ipv6_cidr` in this release; keep IPv6 pod/service CIDRs unset on Tailscale clusters.
 - Tailnet ACLs must auto-approve advertised Hetzner node-private `/32` routes when external `network_scope` nodepools are used.
 - The module disables Tailscale subnet-route SNAT for node/CNI traffic.
 - Flannel VXLAN is first supported; Cilium needs the experimental flag; Calico is rejected.

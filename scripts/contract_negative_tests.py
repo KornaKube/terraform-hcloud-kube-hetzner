@@ -120,6 +120,12 @@ CASES = [
         target="module.sut.terraform_data.validation_contract",
         expected_substring="extra_robot_nodes cannot be combined",
     ),
+    Case(
+        name="dualstack-tailscale-transport",
+        var_file=FIXTURE_DIR / "dualstack-tailscale-transport.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring='node_transport_mode="tailscale" cannot be combined',
+    ),
 ]
 
 
