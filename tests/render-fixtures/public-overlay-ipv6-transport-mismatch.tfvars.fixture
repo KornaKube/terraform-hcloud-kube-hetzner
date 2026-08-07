@@ -2,7 +2,7 @@ cluster_ipv6_cidr = "fd00:42::/56"
 service_ipv6_cidr = "fd00:43::/112"
 cni_plugin        = "cilium"
 
-control_plane_endpoint                       = "https://cp.example.invalid:6443"
-multinetwork_mode                            = "cilium_public_overlay"
-enable_experimental_cilium_public_overlay    = true
-multinetwork_transport_ip_family             = "ipv4"
+control_plane_endpoint                    = "https://cp.example.invalid:6443"
+multinetwork_mode                         = "cilium_public_overlay"
+enable_experimental_cilium_public_overlay = true
+multinetwork_transport_ip_family          = "ipv4"
