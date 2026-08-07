@@ -218,6 +218,15 @@ resource "terraform_data" "validation_contract" {
       error_message = "cluster_ipv6_cidr/service_ipv6_cidr require effective public IPv6 on all control-plane and agent nodes, because Hetzner Cloud Networks are IPv4-only and the IPv6 half of node-ip must be the node's public address. nat_router is private-only and cannot be combined with IPv6 cluster CIDRs in this release."
     }
 
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        try(trimspace(var.cluster_ipv4_cidr), "") != "" ||
+        local.multinetwork_overlay_enabled
+      )
+      error_message = "IPv6-only pod/service CIDRs are not supported on the standard private-network path in this release. Hetzner Cloud Networks are IPv4-only, so Cilium tunnel endpoints, cilium-health, and kubelet would move to public IPv6 without matching node-to-node firewall rules. Keep cluster_ipv4_cidr/service_ipv4_cidr set for dual-stack, or use the experimental public-overlay path."
+    }
+
     # Static nodes know their public IPv6 address at plan time. Autoscaler-created
     # nodes do not in the standard private-network path. The experimental
     # public-overlay path performs runtime public node-ip detection, so keep that
@@ -589,6 +598,14 @@ resource "terraform_data" "validation_contract" {
     precondition {
       condition     = length(var.extra_robot_nodes) == 0 || var.kubernetes_distribution == "k3s"
       error_message = "extra_robot_nodes currently supports only kubernetes_distribution = \"k3s\"."
+    }
+
+    precondition {
+      condition = (
+        try(trimspace(var.cluster_ipv6_cidr), "") == "" ||
+        length(var.extra_robot_nodes) == 0
+      )
+      error_message = "extra_robot_nodes cannot be combined with cluster_ipv6_cidr/service_ipv6_cidr in this release because Robot nodes currently render an IPv4-only node-ip from private_ipv4."
     }
 
     # Moved from variable "load_balancer_location" validation near variables.tf:1182.

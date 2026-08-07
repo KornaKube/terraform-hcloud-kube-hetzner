@@ -9,12 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠️ Upgrade Notes
 
-- **IPv6/dual-stack enablement on existing clusters:** static control-plane and agent nodes now render `node-ip` values that match the configured cluster CIDR families when `cluster_ipv6_cidr` / `service_ipv6_cidr` are set. Kubernetes assigns `node.spec.podCIDRs` when a node registers, so existing IPv4-only nodes may need controlled re-registration/replacement to receive IPv6 PodCIDRs after enabling dual-stack. This adds new plan-time rejections for configurations that previously planned but could not boot correctly: active autoscaler nodepools on the standard private-network path, `nat_router` with IPv6 cluster CIDRs, public-overlay transport families that omit an enabled cluster CIDR family, and Cilium native routing with IPv6 cluster CIDRs. Use the default Cilium tunnel mode and static nodes for the standard path.
+- **IPv6/dual-stack enablement on existing clusters:** static control-plane and agent nodes now render `node-ip` values that match the configured cluster CIDR families when `cluster_ipv6_cidr` / `service_ipv6_cidr` are set. Kubernetes assigns `node.spec.podCIDRs` when a node registers, so existing IPv4-only nodes may need controlled re-registration/replacement to receive IPv6 PodCIDRs after enabling dual-stack. This adds new plan-time rejections for configurations that previously planned but could not boot correctly: missing effective public IPv6 on any static HCloud node, IPv6-only pod/service CIDRs on the standard private-network path, active autoscaler nodepools on the standard private-network path, `nat_router` with IPv6 cluster CIDRs, `extra_robot_nodes` with IPv6 cluster CIDRs, public-overlay transport families that omit an enabled cluster CIDR family, and Cilium native routing with IPv6 cluster CIDRs. Use dual-stack, the default Cilium tunnel mode, static HCloud nodes, and public IPv6-enabled nodepools for the standard path.
 - **openSUSE SSH access on new/replaced nodes:** cloud-init no longer writes the `ssh_pwauth` override that shadowed openSUSE's vendor `sshd_config`, and kube-hetzner's SSH drop-in now explicitly keeps `UsePAM yes`. This applies to newly provisioned or replaced openSUSE nodes.
 
 ### 🚀 New Features
 
-- Static control-plane and agent nodes now advertise IPv6/dual-stack `node-ip` values that match configured cluster CIDR families, making the existing Cilium IPv6 CIDR inputs plan-validated on the standard private-network topology where validation passes (#2244, #2245; thanks @bkero).
+- Static control-plane and agent nodes now advertise dual-stack `node-ip` values that match configured cluster CIDR families, making the existing Cilium IPv6 CIDR inputs plan-validated on the standard private-network topology where validation passes (#2244, #2245; thanks @bkero).
 
 ### 🐛 Bug Fixes
 

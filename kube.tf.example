@@ -207,7 +207,8 @@ module "kube-hetzner" {
   # service_ipv4_cidr = "10.43.0.0/16"
 
   # Optional IPv6 CIDRs for Pod/Service networking.
-  # Set both to enable dual-stack. If cluster_ipv4_cidr/service_ipv4_cidr are set to empty strings, this enables IPv6-only service/pod CIDRs.
+  # Set both to enable dual-stack. Keep cluster_ipv4_cidr/service_ipv4_cidr set on the standard private-network path;
+  # IPv6-only service/pod CIDRs require the experimental public-overlay path in this release.
   # cluster_ipv6_cidr = "2001:cafe:42::/56"
   # service_ipv6_cidr = "2001:cafe:43::/112"
 

@@ -108,6 +108,18 @@ CASES = [
         target="module.sut.terraform_data.validation_contract",
         expected_substring='cilium_routing_mode="native"',
     ),
+    Case(
+        name="ipv6only-standard-private-network",
+        var_file=FIXTURE_DIR / "ipv6only-standard-private-network.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="IPv6-only pod/service CIDRs are not supported",
+    ),
+    Case(
+        name="dualstack-robot-nodes",
+        var_file=FIXTURE_DIR / "dualstack-robot-nodes.tfvars.fixture",
+        target="module.sut.terraform_data.validation_contract",
+        expected_substring="extra_robot_nodes cannot be combined",
+    ),
 ]
 
 

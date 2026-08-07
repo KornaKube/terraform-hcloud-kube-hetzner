@@ -61,6 +61,8 @@ module "sut" {
   agent_nodepools         = var.agent_nodepools
   autoscaler_nodepools    = var.autoscaler_nodepools
   nat_router              = var.nat_router
+  vswitch_id              = var.vswitch_id
+  extra_robot_nodes       = var.extra_robot_nodes
 }
 
 variable "hcloud_token" {
@@ -163,4 +165,14 @@ variable "autoscaler_nodepools" {
 variable "nat_router" {
   type    = any
   default = null
+}
+
+variable "vswitch_id" {
+  type    = number
+  default = null
+}
+
+variable "extra_robot_nodes" {
+  type    = any
+  default = []
 }

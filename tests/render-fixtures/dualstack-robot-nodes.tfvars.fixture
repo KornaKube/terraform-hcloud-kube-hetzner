@@ -1,0 +1,12 @@
+cluster_ipv6_cidr = "fd00:42::/56"
+service_ipv6_cidr = "fd00:43::/112"
+cni_plugin        = "cilium"
+vswitch_id        = 12345
+
+extra_robot_nodes = [
+  {
+    host         = "203.0.113.10"
+    private_ipv4 = "10.201.0.2"
+    vlan_id      = 4000
+  }
+]
