@@ -170,7 +170,8 @@ fi
 
 Expected snapshots:
 - Leap Micro: `k3s x86`, `k3s arm`, `rke2 x86`, `rke2 arm` (4 total)
-- MicroOS: x86 + arm (2 total, optional but recommended for mixed-os scenarios)
+- MicroOS: `k3s x86`, `k3s arm`, `rke2 x86`, `rke2 arm` (4 total,
+  required when the release touches the legacy image path or mixed-os scenarios)
 
 Check:
 
@@ -178,20 +179,29 @@ Check:
 hcloud image list --type snapshot -o columns=id,name,architecture,labels
 ```
 
-Create missing ones from kube-test:
+Create missing ones from a fresh, manifest-verified generated bundle. Keep the
+token already exported in the environment; do not parse or print it:
 
 ```bash
-cd /Volumes/MysticalTech/Code/kube-test
-export HCLOUD_TOKEN="$(awk -F'\"' '/hcloud_token/{print $2}' terraform.tfvars)"
-
-packer init hcloud-leapmicro-snapshots.pkr.hcl
-for distro in k3s rke2; do
-  packer build -var "selinux_package_to_install=${distro}" hcloud-leapmicro-snapshots.pkr.hcl
+repo_root=/Volumes/MysticalTech/Code/kube-hetzner
+build_root="$(mktemp -d)"
+KH_SOURCE_DIRECTORY="$repo_root" folder_name=generated \
+  folder_path="$build_root" create_snapshots=none \
+  "$repo_root/scripts/create.sh"
+cd "$build_root/generated/packer"
+./scripts/install-verified-packer-plugin-hcloud.sh
+for template in hcloud-leapmicro-snapshots.pkr.hcl hcloud-microos-snapshots.pkr.hcl; do
+  packer init "$template"
+  for distro in k3s rke2; do
+    packer build -var "selinux_package_to_install=${distro}" "$template"
+  done
 done
-
-packer init hcloud-microos-snapshots.pkr.hcl
-packer build hcloud-microos-snapshots.pkr.hcl
 ```
+
+For a release canary, set `KH_SOURCE_DIRECTORY` to the extracted and
+SHA-256-verified archive for functional commit A. Record the generated bundle's
+manifest digest, snapshot IDs, architectures, and distro labels before any
+cluster apply. Never build from loose templates copied into `kube-test`.
 
 ## Step 4: Run Matrix (Simple to Complex)
 
@@ -262,6 +272,43 @@ Known high-frequency failures to check first:
 3. RKE2 config/path issues:
    - Confirm module writes persistent config under `/etc/rancher/rke2`.
    - If a script writes to non-persistent/incorrect paths, fix module scripts and rerun.
+4. Stale Leap Micro signing key:
+   - Symptom: `transactional-update.service` reports `NOTTRUSTED` packages or
+     repository metadata signed by an expired `35A2F86E29B700A4` key.
+   - Check: `rpm -q openSUSE-build-key gpg-pubkey-29b700a4-6a17fa38`.
+   - Fix path: rebuild the Leap Micro snapshot from the current authenticated
+     openSUSE appliance. Never use `--no-gpg-checks`, `gpgcheck=0`,
+     `rpm --nosignature`, or an equivalent bypass.
+
+### Leap Micro OS update release gate
+
+For release candidates that touch snapshots, bootstrap, SSH, SELinux, or OS
+updates, keep a disposable cluster after apply and prove the real update path.
+Run the agent first, then a control plane:
+
+```bash
+transactional-update --no-selfupdate --non-interactive up
+```
+
+Require exit status 0, a new default snapshot when updates are available, and
+no `NOTTRUSTED`, key-import, RPM-lock, or discarded-snapshot failure. Reboot the
+node and verify all of the following before continuing:
+
+```bash
+uname -r
+rpm -q openSUSE-build-key gpg-pubkey-29b700a4-6a17fa38
+systemctl is-active k3s k3s-agent rke2-server rke2-agent 2>/dev/null || true
+systemctl --failed
+getenforce
+sshd -T | grep -E '^(usepam|permitrootlogin|pubkeyauthentication|passwordauthentication|kbdinteractiveauthentication) '
+snapper list
+```
+
+Also prove that the boot ID changed, the node returned `Ready`, all required
+pods recovered, API `/readyz` passes, metrics work, and an in-cluster DNS probe
+succeeds. A single-control-plane canary should show brief API downtime; require
+full recovery before destroying it. Re-run the checks after every reboot rather
+than accepting a successful package transaction as deployment proof.
 
 ## Step 6: Fix + Targeted Rerun Loop
 

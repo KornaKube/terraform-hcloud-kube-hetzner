@@ -3,13 +3,18 @@ name: Lint
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   forbid-null-resource:
     runs-on: ubuntu-latest
     name: Forbid null_resource usage
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Check for null provider resources
         run: |
@@ -22,19 +27,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     name: Scan terraform files with tfsec
     steps:
       - name: Clone repo
-        uses: actions/checkout@v7
-
-      - name: Run tfsec with reviewdog output on the PR
-        uses: reviewdog/action-tfsec@v1.30.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          github_token: ${{ github.token }}
-          filter_mode: nofilter
-          fail_on_error: true
-          tfsec_flags: --ignore-hcl-errors
+          persist-credentials: false
+
+      - name: Install verified tfsec
+        env:
+          TFSEC_VERSION: 1.28.14
+          TFSEC_SHA256: 329ae7f67f2f1813ebe08de498719ea7003c75d3ca24bb0b038369062508008e
+        run: |
+          curl -fsS --proto '=https' --proto-redir '=https' --tlsv1.2 --location \
+            --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 \
+            --max-filesize 104857600 -o /tmp/tfsec.tar.gz \
+            "https://github.com/aquasecurity/tfsec/releases/download/v${TFSEC_VERSION}/tfsec_${TFSEC_VERSION}_linux_amd64.tar.gz"
+          printf '%s  %s\n' "$TFSEC_SHA256" /tmp/tfsec.tar.gz | sha256sum -c -
+          tar -xzf /tmp/tfsec.tar.gz -C /tmp tfsec
+          sudo install -m 0755 /tmp/tfsec /usr/local/bin/tfsec
+          tfsec --version
+
+      - name: Scan Terraform files
+        run: tfsec --ignore-hcl-errors .
 
   validate:
     runs-on: ubuntu-latest
@@ -48,10 +63,12 @@ jobs:
           - 1.15.0
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
         with:
           terraform_version: ${{ matrix.terraform-version }}
 
@@ -66,10 +83,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
         with:
           terraform_version: 1.15.0
           # The wrapper does not forward stdin; render_harness.py drives
@@ -82,15 +101,119 @@ jobs:
       - name: Run negative contract tests (tokenless)
         run: python3 scripts/contract_negative_tests.py
 
+  packer-validate:
+    runs-on: ubuntu-latest
+    name: Validate Packer and supply-chain fixtures
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
+        with:
+          version: 1.16.0
+
+      - name: Install verification tools
+        run: sudo apt-get update && sudo apt-get install --yes rpm shellcheck zip
+
+      - name: Validate Packer template and verifier fixtures
+        env:
+          PACKER_PLUGIN_PATH: ${{ runner.temp }}/packer-plugins
+        run: |
+          packer fmt -check packer-template/hcloud-leapmicro-snapshots.pkr.hcl packer-template/hcloud-microos-snapshots.pkr.hcl
+          packer validate -syntax-only packer-template/hcloud-leapmicro-snapshots.pkr.hcl
+          packer validate -syntax-only packer-template/hcloud-microos-snapshots.pkr.hcl
+          scripts/tests/test_verified_packer_plugin_hcloud_installer.sh
+          scripts/tests/test_packer_template_integrity.sh
+          packer init packer-template/hcloud-leapmicro-snapshots.pkr.hcl
+          packer validate -var hcloud_token=ci-validation-placeholder packer-template/hcloud-leapmicro-snapshots.pkr.hcl
+          packer init packer-template/hcloud-microos-snapshots.pkr.hcl
+          packer validate -var hcloud_token=ci-validation-placeholder packer-template/hcloud-microos-snapshots.pkr.hcl
+          shellcheck packer-template/scripts/*.sh scripts/*.sh scripts/tests/*.sh
+          scripts/tests/test_packer_trust_anchors.sh
+          scripts/tests/test_leapmicro_verifier.sh
+          scripts/tests/test_leapmicro_transactional_cleanup.sh
+          scripts/tests/test_microos_packer_hardening.sh
+          scripts/tests/test_microos_verifier.sh
+          scripts/tests/test_microos_snapshot_selection.sh
+          scripts/tests/test_create_distribution.sh
+          scripts/tests/test_github_release_controls_contract.sh
+          scripts/tests/test_packer_security_bundle_install.sh
+          scripts/tests/test_readme_release_bootstrap.sh
+          scripts/tests/test_release_bootstrap_pr_gate.sh
+          scripts/tests/test_release_bootstrap_topology.sh
+          scripts/tests/test_release_remote_branch_contract.sh
+          scripts/tests/test_release_atomic_tag_push.sh
+          scripts/tests/test_generated_site_contract.sh
+          scripts/check-release-bootstrap-pr-gate.sh
+          scripts/tests/test_rancher_rpm_installer.sh
+          scripts/tests/test_pr_scanner_contract.sh
+          scripts/tests/test_release_workflow_contract.sh
+          scripts/tests/test_trusted_hcloud_smoke_contract.sh
+          scripts/tests/test_verified_kubernetes_installer.sh
+
+      - name: Verify pinned Rancher SELinux release artifacts
+        run: |
+          env \
+            RPM_URL=https://github.com/k3s-io/k3s-selinux/releases/download/v1.6.stable.1/k3s-selinux-1.6-1.slemicro.noarch.rpm \
+            EXPECTED_RELEASE_TAG=v1.6.stable.1 \
+            EXPECTED_PACKAGE_FILE=k3s-selinux-1.6-1.slemicro.noarch.rpm \
+            EXPECTED_PACKAGE_NAME=k3s-selinux \
+            EXPECTED_RPM_SHA256=583f4b3d5f838e9e2bb450f7cc60142de15fc2deaa56687d15b07a73b80b8836 \
+            OUTPUT_RPM_FILE="$RUNNER_TEMP/k3s-selinux-1.6-1.slemicro.noarch.rpm" \
+            RANCHER_SIGNING_KEY_FILE="$GITHUB_WORKSPACE/packer-template/keys/rancher-ci-signing-key.asc" \
+            RANCHER_SIGNING_KEY_FINGERPRINT=C8CFF216455126E9B9C918BE925EA29AE257814A \
+            "$GITHUB_WORKSPACE/packer-template/scripts/verify-rancher-rpm.sh"
+          RANCHER_SIGNED_RPM_FILE="$RUNNER_TEMP/k3s-selinux-1.6-1.slemicro.noarch.rpm" \
+            "$GITHUB_WORKSPACE/scripts/tests/test_rancher_rpm_signature_required.sh"
+          env \
+            RPM_URL=https://github.com/rancher/rke2-selinux/releases/download/v0.22.stable.1/rke2-selinux-0.22-1.slemicro.noarch.rpm \
+            EXPECTED_RELEASE_TAG=v0.22.stable.1 \
+            EXPECTED_PACKAGE_FILE=rke2-selinux-0.22-1.slemicro.noarch.rpm \
+            EXPECTED_PACKAGE_NAME=rke2-selinux \
+            EXPECTED_RPM_SHA256=f3eee9e2e27e4771e4a25b5107f0f762260df0a1f1a1081c14993e6e1a916301 \
+            OUTPUT_RPM_FILE="$RUNNER_TEMP/rke2-selinux-0.22-1.slemicro.noarch.rpm" \
+            RANCHER_SIGNING_KEY_FILE="$GITHUB_WORKSPACE/packer-template/keys/rancher-ci-signing-key.asc" \
+            RANCHER_SIGNING_KEY_FINGERPRINT=C8CFF216455126E9B9C918BE925EA29AE257814A \
+            "$GITHUB_WORKSPACE/packer-template/scripts/verify-rancher-rpm.sh"
+          env \
+            RPM_URL=https://github.com/k3s-io/k3s-selinux/releases/download/v1.6.stable.1/k3s-selinux-1.6-1.sle.noarch.rpm \
+            EXPECTED_RELEASE_TAG=v1.6.stable.1 \
+            EXPECTED_PACKAGE_FILE=k3s-selinux-1.6-1.sle.noarch.rpm \
+            EXPECTED_PACKAGE_NAME=k3s-selinux \
+            EXPECTED_RPM_SHA256=aaaf5a0632d77db8c5808c6d1097167c934602639d628526c1ec0bd9cb2dd745 \
+            OUTPUT_RPM_FILE="$RUNNER_TEMP/k3s-selinux-1.6-1.sle.noarch.rpm" \
+            RANCHER_SIGNING_KEY_FILE="$GITHUB_WORKSPACE/packer-template/keys/rancher-ci-signing-key.asc" \
+            RANCHER_SIGNING_KEY_FINGERPRINT=C8CFF216455126E9B9C918BE925EA29AE257814A \
+            "$GITHUB_WORKSPACE/packer-template/scripts/verify-rancher-rpm.sh"
+          RANCHER_SIGNED_RPM_FILE="$RUNNER_TEMP/k3s-selinux-1.6-1.sle.noarch.rpm" \
+            "$GITHUB_WORKSPACE/scripts/tests/test_rancher_rpm_signature_required.sh"
+          env \
+            RPM_URL=https://github.com/rancher/rke2-selinux/releases/download/v0.22.stable.1/rke2-selinux-0.22-1.sle.noarch.rpm \
+            EXPECTED_RELEASE_TAG=v0.22.stable.1 \
+            EXPECTED_PACKAGE_FILE=rke2-selinux-0.22-1.sle.noarch.rpm \
+            EXPECTED_PACKAGE_NAME=rke2-selinux \
+            EXPECTED_RPM_SHA256=0c3b1184293a2f47482d6333aa183b91ed9351889925b55760208a37a1f68a39 \
+            OUTPUT_RPM_FILE="$RUNNER_TEMP/rke2-selinux-0.22-1.sle.noarch.rpm" \
+            RANCHER_SIGNING_KEY_FILE="$GITHUB_WORKSPACE/packer-template/keys/rancher-ci-signing-key.asc" \
+            RANCHER_SIGNING_KEY_FINGERPRINT=C8CFF216455126E9B9C918BE925EA29AE257814A \
+            "$GITHUB_WORKSPACE/packer-template/scripts/verify-rancher-rpm.sh"
+
   opentofu-validate:
     runs-on: ubuntu-latest
     name: Validate OpenTofu compatibility
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v2
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: 1.11.6
 
@@ -104,7 +227,9 @@ jobs:
     name: Check formatting of terraform files
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: terraform fmt
-        uses: dflook/terraform-fmt-check@v3.0.0
+        uses: dflook/terraform-fmt-check@5702d43749973bd5b54e2380f090c1ad8054ecd4 # v3.0.0

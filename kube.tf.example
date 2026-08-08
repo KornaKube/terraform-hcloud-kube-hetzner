@@ -1069,8 +1069,15 @@ module "kube-hetzner" {
   # Allows you to specify the k3s version. If defined, supersedes k3s_channel.
   # See https://github.com/k3s-io/k3s/releases for the available versions.
   # k3s_version = "v1.34.6+k3s1"
+  # Optional independent pins for exact versions not reviewed in this module release.
+  # Missing architectures use that exact official release's checksum publication.
+  # k3s_artifact_sha256 = {
+  #   amd64 = "<64-character SHA-256 from independently reviewed official release provenance>"
+  #   arm64 = "<64-character SHA-256 from independently reviewed official release provenance>"
+  # }
 
-  # Allows you to specify stable, latest, or testing as live install/upgrade channels.
+  # Selects stable, latest, or testing. Initial bootstrap uses the exact channel release reviewed
+  # with this module version; automated upgrades can continue following the live channel.
   # v1.33 is accepted for explicit v2 upgrade preservation. For exact Kubernetes minor pinning,
   # use k3s_version instead of a minor k3s_channel.
   # see https://rancher.com/docs/k3s/latest/en/upgrades/basic/ and https://update.k3s.io/v1-release/channels
@@ -1530,8 +1537,9 @@ module "kube-hetzner" {
   # leapmicro_x86_snapshot_id = "1234567"
   # leapmicro_arm_snapshot_id = "1234567"
 
-  # MicroOS snapshot IDs to be used (legacy/upgrade). Per default empty, the most recent image created using createkh will be used.
-  # You can fetch the ids with the hcloud cli by running the "hcloud image list --selector 'microos-snapshot=yes'" command.
+  # MicroOS snapshot IDs to be used (legacy/upgrade). Per default empty, the newest available image matching kubernetes_distribution is used, with older unlabeled images retained as fallback.
+  # You can fetch matching IDs with:
+  # hcloud image list --selector 'microos-snapshot=yes,kube-hetzner/k8s-distro=<k3s-or-rke2>'
   # microos_x86_snapshot_id = "1234567"
   # microos_arm_snapshot_id = "1234567"
 
@@ -1878,6 +1886,12 @@ replicas: 3
   # RKE2 exact version/channel controls. rke2_version wins over rke2_channel.
   # rke2_channel = "stable"
   # rke2_version = ""
+  # Optional independent pins for exact versions not reviewed in this module release.
+  # Missing architectures use that exact official release's checksum publication.
+  # rke2_artifact_sha256 = {
+  #   amd64 = "<64-character SHA-256 from independently reviewed official release provenance>"
+  #   arm64 = "<64-character SHA-256 from independently reviewed official release provenance>"
+  # }
 
   # Longhorn/Rancher/chart bootstrap controls.
   # Unset Longhorn/Rancher/chart versions use reviewed module defaults; set "latest" or legacy "*" only for intentional floating chart behavior.

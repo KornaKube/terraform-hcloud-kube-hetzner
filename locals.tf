@@ -780,33 +780,158 @@ else
 fi
 EOT
   ]
+  require_k3s_selinux = [<<-EOT
+echo "Verifying baked k3s SELinux policy package..."
+if ! command -v rpm >/dev/null 2>&1 || ! rpm -q k3s-selinux >/dev/null 2>&1 || [ ! -s /usr/share/selinux/packages/k3s.pp ]; then
+  echo "ERROR: the selected transactional OS snapshot must contain the baked k3s-selinux package and policy"
+  exit 1
+fi
+EOT
+  ]
+  require_rke2_selinux = [<<-EOT
+echo "Verifying baked RKE2 SELinux policy package..."
+if ! command -v rpm >/dev/null 2>&1 || ! rpm -q rke2-selinux >/dev/null 2>&1 || [ ! -s /usr/share/selinux/packages/rke2.pp ]; then
+  echo "ERROR: the selected transactional OS snapshot must contain the baked rke2-selinux package and policy"
+  exit 1
+fi
+EOT
+  ]
   swap_node_label = ["node.kubernetes.io/server-swap=enabled"]
 
-  k3s_install_command  = "curl -sfL https://get.k3s.io | INSTALL_K3S_SKIP_START=true INSTALL_K3S_SKIP_SELINUX_RPM=true %{if var.k3s_version == ""}INSTALL_K3S_CHANNEL=${var.k3s_channel}%{else}INSTALL_K3S_VERSION=${var.k3s_version}%{endif} INSTALL_K3S_EXEC='%s' sh -"
-  rke2_install_command = "curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.rke2_version} INSTALL_RKE2_EXEC='%s' sh -"
+  # Initial channel installs are snapshots reviewed with this module release.
+  # Future upstream channel movement must arrive through a module update instead
+  # of silently changing root-executed bytes during node bootstrap.
+  k3s_channel_release_manifest = {
+    stable  = "v1.36.3+k3s1"
+    latest  = "v1.36.3+k3s1"
+    testing = "v1.18.2-rc3+k3s1"
+    "v1.33" = "v1.33.13+k3s2"
+  }
+  rke2_channel_release_manifest = {
+    stable  = "v1.35.7+rke2r1"
+    latest  = "v1.36.3+rke2r1"
+    testing = "v1.18.9-beta22+rke2"
+  }
+
+  # Digests were captured from the official GitHub release assets/checksum
+  # files and are independent of the immutable installer script pins.
+  k3s_release_sha256_manifest = {
+    "v1.36.3+k3s1" = tomap({
+      amd64 = "2f98a9f8fe5782479ee2d54e70a1b10a7f6fd4cae8d38ed3098452dc6eed76b5"
+      arm64 = "c9a209103f480f163b7c6a56f00862b4481927b284dc29a3716bb70d886691a8"
+    })
+    "v1.33.13+k3s2" = tomap({
+      amd64 = "1572f0f23bd5a844bd405b71875877aacacc7ab79e279d3d73735654c37c7735"
+      arm64 = "cf6afb3944f9ecf120fa2837b542479018c08f9ea1d1d181d4a68445e7717a8d"
+    })
+    "v1.18.2-rc3+k3s1" = tomap({
+      amd64 = "812205e670eaf20cc81b0b6123370edcf84914e16a2452580285367d23525d0f"
+      arm64 = "2e12d21ed85db1e688cc651b2eb6fa4fe8ef2ee15409356ee4be556fcccbef2e"
+    })
+  }
+  rke2_release_sha256_manifest = {
+    "v1.32.5+rke2r1" = tomap({
+      amd64 = "ea3d90462a9fcc3825ebff121e3654af657f3cbfae783c403594216a299a5c8f"
+      arm64 = "42f89ee6564da9cb8c22d510895e16ab4e175b82ada2e4527b44d351029150fc"
+    })
+    "v1.35.7+rke2r1" = tomap({
+      amd64 = "7a29a6fbf512903a6a4611a289bcb3bdf01ddeea9df1a09b1bd1f210f3d6948a"
+      arm64 = "0887d7b1e08dc7eb5ec57ad1db2d38149d879d224ddaf6f808e31dfa36ba1c9f"
+    })
+    "v1.36.3+rke2r1" = tomap({
+      amd64 = "5bbc6315131af7f435385d0ed63f14788ef2a858ac482f8b9146cf3a1a1582d3"
+      arm64 = "af50c3352ccb4d86c1fda24424707f9d4078b2a296245d832143ae283cd5fdbd"
+    })
+    "v1.18.9-beta22+rke2" = tomap({
+      amd64 = "798abf7a0d857ecd447254d685d1e4f86b7b1b1f288c4ae031f5b747bebcefec"
+    })
+  }
+
+  k3s_initial_version   = var.k3s_version != "" ? var.k3s_version : lookup(local.k3s_channel_release_manifest, var.k3s_channel, "")
+  rke2_initial_version  = var.rke2_version != "" ? var.rke2_version : lookup(local.rke2_channel_release_manifest, var.rke2_channel, "")
+  k3s_reviewed_sha256   = lookup(local.k3s_release_sha256_manifest, local.k3s_initial_version, tomap({}))
+  rke2_reviewed_sha256  = lookup(local.rke2_release_sha256_manifest, local.rke2_initial_version, tomap({}))
+  k3s_effective_sha256  = length(local.k3s_reviewed_sha256) > 0 ? local.k3s_reviewed_sha256 : var.k3s_artifact_sha256
+  rke2_effective_sha256 = length(local.rke2_reviewed_sha256) > 0 ? local.rke2_reviewed_sha256 : var.rke2_artifact_sha256
+
+  required_kubernetes_artifact_architectures = distinct(concat(
+    [for node in values(local.control_plane_nodes) : substr(node.server_type, 0, 3) == "cax" ? "arm64" : "amd64"],
+    [for node in values(local.agent_nodes) : substr(node.server_type, 0, 3) == "cax" ? "arm64" : "amd64"],
+    [for nodepool in var.autoscaler_nodepools : substr(nodepool.server_type, 0, 3) == "cax" ? "arm64" : "amd64" if nodepool.max_nodes > 0],
+    length(var.extra_robot_nodes) > 0 ? ["amd64"] : [],
+  ))
+
+  verified_kubernetes_installer_b64    = base64encode(file("${path.module}/scripts/install-verified-kubernetes.sh"))
+  verified_kubernetes_installer_prefix = "KH_INSTALLER=$(mktemp /tmp/kh-kubernetes-install.XXXXXXXXXX) && trap 'rm -f \"$KH_INSTALLER\"' EXIT && printf '%s' '${local.verified_kubernetes_installer_b64}' | base64 --decode > \"$KH_INSTALLER\" && chmod 0700 \"$KH_INSTALLER\" &&"
+  k3s_install_server_command = format(
+    "%s \"$KH_INSTALLER\" k3s '%s' '%s' '%s' '%s'",
+    local.verified_kubernetes_installer_prefix,
+    local.k3s_initial_version,
+    lookup(local.k3s_effective_sha256, "amd64", ""),
+    lookup(local.k3s_effective_sha256, "arm64", ""),
+    base64encode("server ${var.control_plane_exec_args}"),
+  )
+  k3s_install_agent_command = format(
+    "%s \"$KH_INSTALLER\" k3s '%s' '%s' '%s' '%s'",
+    local.verified_kubernetes_installer_prefix,
+    local.k3s_initial_version,
+    lookup(local.k3s_effective_sha256, "amd64", ""),
+    lookup(local.k3s_effective_sha256, "arm64", ""),
+    base64encode("agent ${var.agent_exec_args}"),
+  )
+  k3s_install_external_agent_command = format(
+    "K3S_URL=$(printf '%%s' '%s' | base64 --decode) && K3S_TOKEN=$(printf '%%s' '%s' | base64 --decode) && KH_K3S_EXTERNAL_NODE_IP='<PUBLIC_NODE_IP>' && export K3S_URL K3S_TOKEN KH_K3S_EXTERNAL_NODE_IP && %s \"$KH_INSTALLER\" k3s '%s' '%s' '%s' '%s'",
+    base64encode(local.k3s_endpoint),
+    base64encode(local.cluster_token),
+    local.verified_kubernetes_installer_prefix,
+    local.k3s_initial_version,
+    lookup(local.k3s_effective_sha256, "amd64", ""),
+    lookup(local.k3s_effective_sha256, "arm64", ""),
+    base64encode("agent ${var.agent_exec_args}"),
+  )
+  rke2_install_server_command = format(
+    "%s \"$KH_INSTALLER\" rke2 '%s' '%s' '%s' '%s'",
+    local.verified_kubernetes_installer_prefix,
+    local.rke2_initial_version,
+    lookup(local.rke2_effective_sha256, "amd64", ""),
+    lookup(local.rke2_effective_sha256, "arm64", ""),
+    base64encode("server ${var.control_plane_exec_args}"),
+  )
+  rke2_install_agent_command = format(
+    "%s \"$KH_INSTALLER\" rke2 '%s' '%s' '%s' '%s'",
+    local.verified_kubernetes_installer_prefix,
+    local.rke2_initial_version,
+    lookup(local.rke2_effective_sha256, "amd64", ""),
+    lookup(local.rke2_effective_sha256, "arm64", ""),
+    base64encode("agent ${var.agent_exec_args}"),
+  )
 
   install_k3s_server = concat(
     local.common_pre_install_k3s_commands,
-    [format(local.k3s_install_command, "server ${var.control_plane_exec_args}")],
+    var.enable_selinux ? local.require_k3s_selinux : [],
+    [local.k3s_install_server_command],
     var.enable_selinux ? local.apply_k3s_selinux : [],
     local.common_post_install_k8s_commands
   )
   install_rke2_server = concat(
     local.common_pre_install_k8s_commands,
-    [format(local.rke2_install_command, "server ${var.control_plane_exec_args}")],
+    var.enable_selinux ? local.require_rke2_selinux : [],
+    [local.rke2_install_server_command],
     var.enable_selinux ? local.apply_rke2_selinux : [],
     local.common_post_install_k8s_commands
   )
 
   install_k3s_agent = concat(
     local.common_pre_install_k3s_commands,
-    [format(local.k3s_install_command, "agent ${var.agent_exec_args}")],
+    var.enable_selinux ? local.require_k3s_selinux : [],
+    [local.k3s_install_agent_command],
     var.enable_selinux ? local.apply_k3s_selinux : [],
     local.common_post_install_k3s_commands
   )
   install_rke2_agent = concat(
     local.common_pre_install_k8s_commands,
-    [format(local.rke2_install_command, "agent ${var.agent_exec_args}")],
+    var.enable_selinux ? local.require_rke2_selinux : [],
+    [local.rke2_install_agent_command],
     var.enable_selinux ? local.apply_rke2_selinux : [],
     local.common_post_install_k8s_commands
   )
@@ -1468,14 +1593,37 @@ EOT
     }
   }
 
+  # New MicroOS snapshots are distro-specific because they contain exactly one
+  # baked SELinux policy. Prefer that explicit contract, but retain unlabeled
+  # pre-v3.1 snapshots as a compatibility fallback. Never select an image
+  # explicitly labeled for the other Kubernetes distribution.
+  microos_x86_snapshots = try(data.hcloud_images.microos_x86_snapshots[0].images, [])
+  microos_arm_snapshots = try(data.hcloud_images.microos_arm_snapshots[0].images, [])
+  microos_x86_distro_snapshots = [
+    for image in local.microos_x86_snapshots : image
+    if try(image.labels["kube-hetzner/k8s-distro"], "") == local.kubernetes_distribution
+  ]
+  microos_arm_distro_snapshots = [
+    for image in local.microos_arm_snapshots : image
+    if try(image.labels["kube-hetzner/k8s-distro"], "") == local.kubernetes_distribution
+  ]
+  microos_x86_legacy_snapshots = [
+    for image in local.microos_x86_snapshots : image
+    if try(image.labels["kube-hetzner/k8s-distro"], "") == ""
+  ]
+  microos_arm_legacy_snapshots = [
+    for image in local.microos_arm_snapshots : image
+    if try(image.labels["kube-hetzner/k8s-distro"], "") == ""
+  ]
+
   snapshot_id_by_os = {
     leapmicro = {
       arm = var.leapmicro_arm_snapshot_id != "" ? var.leapmicro_arm_snapshot_id : try(data.hcloud_image.leapmicro_arm_snapshot[0].id, "")
       x86 = var.leapmicro_x86_snapshot_id != "" ? var.leapmicro_x86_snapshot_id : try(data.hcloud_image.leapmicro_x86_snapshot[0].id, "")
     }
     microos = {
-      arm = var.microos_arm_snapshot_id != "" ? var.microos_arm_snapshot_id : try(data.hcloud_image.microos_arm_snapshot[0].id, "")
-      x86 = var.microos_x86_snapshot_id != "" ? var.microos_x86_snapshot_id : try(data.hcloud_image.microos_x86_snapshot[0].id, "")
+      arm = var.microos_arm_snapshot_id != "" ? var.microos_arm_snapshot_id : try(concat(local.microos_arm_distro_snapshots, local.microos_arm_legacy_snapshots)[0].id, "")
+      x86 = var.microos_x86_snapshot_id != "" ? var.microos_x86_snapshot_id : try(concat(local.microos_x86_distro_snapshots, local.microos_x86_legacy_snapshots)[0].id, "")
     }
   }
 
@@ -1999,19 +2147,51 @@ wait_deployment() {
   name="$2"
   timeout_seconds="$3"
 
-  $KUBECTL get ns "$ns" >/dev/null
-
   deadline="$(($(date +%s) + timeout_seconds))"
-  until $KUBECTL -n "$ns" get "deployment/$name" >/dev/null 2>&1; do
-    if [ "$(date +%s)" -ge "$deadline" ]; then
-      echo "Timed out waiting for deployment/$name to be created in namespace $ns"
+
+  request_timeout_before_deadline() {
+    request_now="$(date +%s)"
+    [ "$request_now" -lt "$deadline" ] || return 1
+
+    request_remaining="$((deadline - request_now))"
+    if [ "$request_remaining" -lt 30 ]; then
+      printf '%s\n' "$request_remaining"
+    else
+      printf '30\n'
+    fi
+  }
+
+  while true; do
+    now="$(date +%s)"
+    if [ "$now" -ge "$deadline" ]; then
+      echo "Timed out waiting for deployment/$name to become available in namespace $ns"
       return 1
     fi
-    sleep 5
-  done
 
-  echo "Waiting for deployment/$name in namespace $ns"
-  $KUBECTL -n "$ns" wait --for=condition=Available --timeout="$${timeout_seconds}s" "deployment/$name"
+    request_seconds="$(request_timeout_before_deadline)" || continue
+    if $KUBECTL --request-timeout="$${request_seconds}s" get ns "$ns" >/dev/null 2>&1; then
+      request_seconds="$(request_timeout_before_deadline)" || continue
+      if $KUBECTL --request-timeout="$${request_seconds}s" -n "$ns" get "deployment/$name" >/dev/null 2>&1; then
+        echo "Waiting for deployment/$name in namespace $ns"
+        request_seconds="$(request_timeout_before_deadline)" || continue
+        if $KUBECTL --request-timeout="$${request_seconds}s" -n "$ns" wait --for=condition=Available --timeout="$${request_seconds}s" "deployment/$name"; then
+          return 0
+        fi
+      fi
+    fi
+
+    now="$(date +%s)"
+    [ "$now" -lt "$deadline" ] || continue
+    remaining_seconds="$((deadline - now))"
+    sleep_seconds=5
+    if [ "$remaining_seconds" -lt "$sleep_seconds" ]; then
+      sleep_seconds="$remaining_seconds"
+    fi
+
+    # Helm can replace a deployment between get and wait. Retry that race
+    # against the original deadline instead of treating NotFound as terminal.
+    sleep "$sleep_seconds"
+  done
 }
 
 wait_helm_install_job() {
@@ -2019,15 +2199,15 @@ wait_helm_install_job() {
   chart_name="$2"
   timeout_seconds="$3"
 
-  $KUBECTL get ns "$ns" >/dev/null 2>&1 || return 0
+  $KUBECTL --request-timeout=30s get ns "$ns" >/dev/null 2>&1 || return 0
 
-  jobs="$($KUBECTL -n "$ns" get job -o name 2>/dev/null | grep -E "^job.batch/helm-install-$chart_name($|-)" || true)"
+  jobs="$($KUBECTL --request-timeout=30s -n "$ns" get job -o name 2>/dev/null | grep -E "^job.batch/helm-install-$chart_name($|-)" || true)"
   if [ -z "$jobs" ]; then
     return 0
   fi
 
   echo "Waiting for Helm install job(s) for $chart_name in namespace $ns"
-  printf '%s\n' "$jobs" | xargs $KUBECTL -n "$ns" wait --for=condition=Complete --timeout="$${timeout_seconds}s"
+  printf '%s\n' "$jobs" | xargs $KUBECTL --request-timeout="$${timeout_seconds}s" -n "$ns" wait --for=condition=Complete --timeout="$${timeout_seconds}s"
 }
 
 ${local.post_install_readiness_wait_helm_job_commands_900}

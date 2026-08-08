@@ -1011,6 +1011,18 @@ resource "terraform_data" "validation_contract" {
       error_message = "When rke2_version is empty, rke2_channel must be stable, latest, or testing. Use rke2_version for exact Kubernetes minor pinning because Rancher minor release channels are not reliable live installer targets."
     }
 
+    precondition {
+      condition = (
+        local.kubernetes_distribution != "rke2" ||
+        length(local.rke2_reviewed_sha256) == 0 ||
+        alltrue([
+          for architecture in local.required_kubernetes_artifact_architectures :
+          try(length(local.rke2_reviewed_sha256[architecture]) == 64, false)
+        ])
+      )
+      error_message = "The reviewed RKE2 release selected for initial bootstrap does not publish artifacts for every active node architecture. Choose stable/latest, use only supported architectures, or set a custom exact rke2_version whose official release publishes the required assets. Dormant autoscaler pools with max_nodes = 0 do not require an artifact."
+    }
+
     # Moved from variable "system_upgrade_schedule_window" validation near variables.tf:2967.
     precondition {
       condition = var.system_upgrade_schedule_window == null ? true : (

@@ -14,7 +14,7 @@ A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.10.1-844FBA?style=flat-square&logo=terraform)](https://terraform.io)&nbsp;&nbsp;
 [![OpenTofu](https://img.shields.io/badge/OpenTofu-Compatible-FFDA18?style=flat-square&logo=opentofu)](https://opentofu.org)&nbsp;&nbsp;
 [![HCloud Provider](https://img.shields.io/badge/hcloud-%3E%3D1.62.0-00ADEF?style=flat-square)](https://registry.terraform.io/providers/hetznercloud/hcloud/latest)&nbsp;&nbsp;
-[![K3s](https://img.shields.io/badge/K3s-v1.35-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)&nbsp;&nbsp;
+[![K3s](https://img.shields.io/badge/K3s-v1.36-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)&nbsp;&nbsp;
 [![Docs](https://img.shields.io/badge/Docs-index-2F80ED?style=flat-square)](#documentation-index)&nbsp;&nbsp;
 [![v2 to v3 migration](https://img.shields.io/badge/v2%20%E2%86%92%20v3-migration-2EA44F?style=flat-square)](MIGRATION.md)&nbsp;&nbsp;
 [![License](https://img.shields.io/github/license/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&color=blue)](LICENSE)&nbsp;&nbsp;
@@ -120,7 +120,7 @@ The biggest release in kube-hetzner history: months of hardening, every flagship
 </tr>
 </table>
 
-> **Required tools:** [Terraform](https://learn.hashicorp.com/tutorials/terraform/install-cli) or [OpenTofu](https://opentofu.org/docs/intro/install/) >= 1.10.1 (`brew install opentofu`), [packer](https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli#installing-packer) (initial setup only), [kubectl](https://kubernetes.io/docs/tasks/tools/), [hcloud](https://github.com/hetznercloud/cli). The module requires `hetznercloud/hcloud` provider >= 1.62.0.
+> **Required tools:** [Terraform](https://learn.hashicorp.com/tutorials/terraform/install-cli) or [OpenTofu](https://opentofu.org/docs/intro/install/) >= 1.10.1 (`brew install opentofu`), [Packer](https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli#installing-packer) = 1.16.0 for image builds, [kubectl](https://kubernetes.io/docs/tasks/tools/), and [hcloud](https://github.com/hetznercloud/cli). The module requires `hetznercloud/hcloud` provider >= 1.62.0.
 
 OpenTofu is officially supported. Pull requests are validated in CI with both Terraform and OpenTofu, including real Hetzner preset apply/health/destroy tests when Hetzner E2E is enabled.
 
@@ -144,8 +144,88 @@ OpenTofu is officially supported. Pull requests are validated in CI with both Te
 </table>
 
 ```sh
-tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh && chmod +x "${tmp_script}" && "${tmp_script}" && rm "${tmp_script}"
+# BEGIN_KH_VERIFIED_BOOTSTRAP
+(
+  set -eu
+  umask 077
+  kh_commit="__KH_SOURCE_COMMIT__"
+  kh_archive_sha256="__KH_SOURCE_ARCHIVE_SHA256__"
+  kh_manifest_sha256="__KH_PACKER_BUNDLE_MANIFEST_SHA256__"
+
+  printf '%s\n' "$kh_commit" | grep -Eq '^[0-9a-f]{40}$' || {
+    echo "The release bootstrap is missing its immutable source commit." >&2
+    exit 1
+  }
+  printf '%s\n' "$kh_archive_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
+    echo "The release bootstrap is missing its reviewed source archive digest." >&2
+    exit 1
+  }
+  printf '%s\n' "$kh_manifest_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
+    echo "The release bootstrap is missing its reviewed Packer manifest digest." >&2
+    exit 1
+  }
+
+  kh_tmp="$(mktemp -d)"
+  kh_archive="$kh_tmp/source.tar.gz"
+  kh_source="$kh_tmp/source"
+  trap 'rm -rf "$kh_tmp"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  curl -fsS --proto '=https' --tlsv1.2 --max-redirs 0 \
+    --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 \
+    --max-filesize 536870912 \
+    "https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/$kh_commit" \
+    -o "$kh_archive"
+  if command -v sha256sum >/dev/null 2>&1; then
+    kh_archive_actual="$(sha256sum "$kh_archive" | awk '{print $1}')"
+  else
+    kh_archive_actual="$(shasum -a 256 "$kh_archive" | awk '{print $1}')"
+  fi
+  [ "$kh_archive_actual" = "$kh_archive_sha256" ] || {
+    echo "Release source archive digest mismatch." >&2
+    exit 1
+  }
+
+  mkdir "$kh_source"
+  tar -xzf "$kh_archive" -C "$kh_source" --strip-components=1
+  kh_manifest="$kh_source/packer-template/security-bundle.sha256"
+  [ -f "$kh_manifest" ] || {
+    echo "Release source archive is missing the Packer security manifest." >&2
+    exit 1
+  }
+  if command -v sha256sum >/dev/null 2>&1; then
+    kh_manifest_actual="$(sha256sum "$kh_manifest" | awk '{print $1}')"
+  else
+    kh_manifest_actual="$(shasum -a 256 "$kh_manifest" | awk '{print $1}')"
+  fi
+  [ "$kh_manifest_actual" = "$kh_manifest_sha256" ] || {
+    echo "Release Packer security manifest digest mismatch." >&2
+    exit 1
+  }
+
+  KH_SOURCE_DIRECTORY="$kh_source" \
+    KH_SOURCE_COMMIT="$kh_commit" \
+    KH_SOURCE_ARCHIVE_SHA256="$kh_archive_sha256" \
+    KH_PACKER_BUNDLE_MANIFEST_SHA256="$kh_manifest_sha256" \
+    "$kh_source/scripts/create.sh"
+)
+# END_KH_VERIFIED_BOOTSTRAP
 ```
+
+The bootstrap downloads one immutable commit archive and verifies its reviewed
+SHA-256 before extracting or executing any release code. It then verifies the
+Packer security manifest independently and explicitly overrides any inherited
+source-directory setting before running the extracted setup entrypoint. To use
+an older release, open that tag's README and run its pinned bootstrap. The Packer
+templates, signing keys, verifier scripts, and bundle installer are accepted
+only when every file matches the reviewed release manifest, and they are
+installed as one transaction. A partial or locally modified old bundle stops
+the setup with an explicit error; `kube.tf` remains outside this transaction so
+the setup continues to preserve user configuration. The verified generation is
+published through one `packer/` directory link only after the whole bundle is
+valid, so Packer never sees a half-installed trust bundle.
 
 The downloaded `kube.tf.example` is an exhaustive showcase, not a minimal
 starter: it currently defines 3 control-plane pools (3 nodes) and 6 active static
@@ -156,16 +236,17 @@ Trim the pools and feature examples you do not need before first apply.
 <summary><strong>Fish shell version</strong></summary>
 
 ```fish
-set tmp_script (mktemp); curl -sSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; chmod +x "$tmp_script"; bash "$tmp_script"; rm "$tmp_script"
+bash
+# Run the verified bootstrap from the desired release README, then exit back to Fish.
 ```
 </details>
 
 <details>
-<summary><strong>Save as alias for future use</strong></summary>
+<summary><strong>Pin a specific release</strong></summary>
 
-```sh
-alias createkh='tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh && chmod +x "${tmp_script}" && "${tmp_script}" && rm "${tmp_script}"'
-```
+Open the desired release tag on GitHub and run the verified bootstrap from that
+tag's README. Each release carries its own immutable commit and reviewed archive
+and manifest digests; ambient variables cannot select a different source.
 </details>
 
 <details>
@@ -174,17 +255,20 @@ alias createkh='tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw
 ```sh
 mkdir /path/to/your/new/folder
 cd /path/to/your/new/folder
-curl -sL https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/kube.tf.example -o kube.tf
-curl -sL https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/packer-template/hcloud-leapmicro-snapshots.pkr.hcl -o hcloud-leapmicro-snapshots.pkr.hcl
-curl -sL https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/packer-template/hcloud-microos-snapshots.pkr.hcl -o hcloud-microos-snapshots.pkr.hcl
+# scripts/create.sh downloads the release commit archive, preserves kube.tf,
+# and atomically publishes the verified Packer security bundle under packer/.
 export HCLOUD_TOKEN="your_hcloud_token"
+cd packer
+./scripts/install-verified-packer-plugin-hcloud.sh
 packer init hcloud-leapmicro-snapshots.pkr.hcl
 for distro in k3s rke2; do
   packer build -var "selinux_package_to_install=${distro}" hcloud-leapmicro-snapshots.pkr.hcl
 done
 # (optional legacy)
 # packer init hcloud-microos-snapshots.pkr.hcl
-# packer build hcloud-microos-snapshots.pkr.hcl
+# for distro in k3s rke2; do
+#   packer build -var "selinux_package_to_install=${distro}" hcloud-microos-snapshots.pkr.hcl
+# done
 hcloud context create <project-name>
 ```
 </details>
@@ -492,6 +576,7 @@ Provider/runtime assertions still belong in resource preconditions, postconditio
 | [`docs/ssh.md`](docs/ssh.md) | SSH keys, firewall sources, dynamic IP handling, and connection behavior. |
 | [`docs/private-network-egress.md`](docs/private-network-egress.md) | NAT router setup and private-network egress patterns. |
 | [`docs/add-robot-server.md`](docs/add-robot-server.md) | Hetzner Robot dedicated server integration. |
+| [`docs/kubernetes-installation-supply-chain.md`](docs/kubernetes-installation-supply-chain.md) | Verified K3s/RKE2 installer and payload trust model, custom-version digest contract, and upgrade impact. |
 | [`docs/v3-release-evidence.md`](docs/v3-release-evidence.md) | Live v3 release evidence matrix and known gaps. |
 | [`site-docs/index.md`](site-docs/index.md) and [`site-docs/configuration.md`](site-docs/configuration.md) | Lightweight generated site docs from `README.md` and `kube.tf.example`. |
 | [`docs/v3-topology-recommendations.md`](docs/v3-topology-recommendations.md) | v3 topology chooser for dev, HA, private-only, Tailscale, Cloudflare, multinetwork, Gateway API, Robot/vSwitch, and registry mirror patterns. |
@@ -889,16 +974,32 @@ spec:
 **Create (recommended):**
 ```sh
 export HCLOUD_TOKEN=<your-token>
+cd /path/to/generated/project/packer
+./scripts/install-verified-packer-plugin-hcloud.sh
 for distro in k3s rke2; do
-  packer build -var "selinux_package_to_install=${distro}" ./packer-template/hcloud-leapmicro-snapshots.pkr.hcl
+  packer build -var "selinux_package_to_install=${distro}" hcloud-leapmicro-snapshots.pkr.hcl
 done
 ```
+
+Leap Micro snapshot descriptions include a UTC timestamp and collision-resistant build ID, so this command can refresh images without deleting snapshots still used by running nodes. The module selects the newest matching OS, architecture, and Kubernetes distribution for new nodes unless you pin a snapshot ID.
+
+The default build accepts only the exact version-bound `download.opensuse.org` `Default-qcow` endpoint. Before writing the image, it verifies the publisher-signed checksum against the vendored openSUSE full-fingerprint trust anchor, rejects expired/revoked keys and signatures, binds the signed filename to the requested version, architecture, and flavor, and compares it with the reviewed exact-byte digest bundled for the selected version. Rancher SELinux RPMs are bound to the exact repository, release tag, filename, full signing-key fingerprint, package identity, and reviewed SHA-256 digest before installation. Trust anchors and artifact digests deliberately fail closed on expiry, rotation, version changes, or upstream refresh; update them only after reviewing the official release and newly signed artifact, then run `scripts/tests/test_packer_trust_anchors.sh` and `scripts/tests/test_leapmicro_verifier.sh`.
+
+Custom mirrors must provide an independently obtained digest in `opensuse_leapmicro_x86_expected_sha256` or `opensuse_leapmicro_arm_expected_sha256`. Adjacent `.sha256` and `.sha256.asc` sidecars are used by default. For query-bearing endpoints, set the corresponding `*_checksum_link` and `*_signature_link` explicitly. Use the architecture-specific sensitive `opensuse_leapmicro_x86_mirror_authorization_header` or `opensuse_leapmicro_arm_mirror_authorization_header` only when that architecture's image and sidecars share one HTTPS origin; authenticated downloads reject redirects, cross-origin URLs, plaintext HTTP, and credentials embedded in URL userinfo.
 
 **Create (legacy MicroOS):**
 ```sh
 export HCLOUD_TOKEN=<your-token>
-packer build ./packer-template/hcloud-microos-snapshots.pkr.hcl
+cd /path/to/generated/project/packer
+./scripts/install-verified-packer-plugin-hcloud.sh
+for distro in k3s rke2; do
+  packer build -var "selinux_package_to_install=${distro}" hcloud-microos-snapshots.pkr.hcl
+done
 ```
+
+MicroOS snapshots also contain one verified, image-baked SELinux policy package and carry a `kube-hetzner/k8s-distro` label. Automatic lookup prefers that matching label and only falls back to an older unlabeled MicroOS snapshot for upgrade compatibility; it never selects an image explicitly labeled for the other distribution.
+
+The default MicroOS build accepts only the exact official rolling ContainerHost OpenStack aliases and requires their publisher-signed checksum to match the reviewed x86/ARM digest in the template. A custom `opensuse_microos_*_mirror_link` requires explicit matching `*_checksum_link`, `*_signature_link`, and `*_expected_sha256` values. Credentials use the architecture-specific sensitive `opensuse_microos_x86_mirror_authorization_header` or `opensuse_microos_arm_mirror_authorization_header`; authenticated downloads require one HTTPS origin and reject redirects, URL userinfo, and cross-origin sidecars.
 
 **Delete:**
 ```sh
@@ -936,7 +1037,7 @@ nodes = {
 
 > **Caution:** You are responsible for ensuring the snapshot ID matches the correct `os` type (`leapmicro`/`microos`) and node architecture (x86 for `cx*`/`cpx*` servers, ARM for `cax*` servers). A mismatched snapshot will cause provisioning failures.
 
-When not set, the module automatically selects the most recent snapshot matching the node's `os` and architecture.
+When not set, the module automatically selects the most recent snapshot matching the node's `os`, architecture, and Kubernetes distribution. Legacy unlabeled MicroOS snapshots remain a fallback when no matching distro-labeled MicroOS snapshot exists.
 </details>
 
 <details>
@@ -1825,12 +1926,21 @@ tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubuserconte
 2. Create your branch: `git checkout -b AmazingFeature`
 3. Point your kube.tf `source` to local clone
 4. Useful commands:
-	   ```sh
-	   ../kube-hetzner/scripts/cleanup.sh
-	   for distro in k3s rke2; do packer build -var "selinux_package_to_install=${distro}" ../kube-hetzner/packer-template/hcloud-leapmicro-snapshots.pkr.hcl; done
-	   # (legacy)
-	   # packer build ../kube-hetzner/packer-template/hcloud-microos-snapshots.pkr.hcl
-	   ```
+   ```sh
+   repo_root="$(git -C ../kube-hetzner rev-parse --show-toplevel)"
+   "$repo_root/scripts/cleanup.sh"
+   build_root="$(mktemp -d)"
+   KH_SOURCE_DIRECTORY="$repo_root" folder_name=generated \
+     folder_path="$build_root" create_snapshots=none \
+     "$repo_root/scripts/create.sh"
+   cd "$build_root/generated/packer"
+   ./scripts/install-verified-packer-plugin-hcloud.sh
+   for template in hcloud-leapmicro-snapshots.pkr.hcl hcloud-microos-snapshots.pkr.hcl; do
+     for distro in k3s rke2; do
+       packer build -var "selinux_package_to_install=${distro}" "$template"
+     done
+   done
+   ```
 5. Update `kube.tf.example` if needed
 6. Commit: `git commit -m 'Add AmazingFeature'`
 7. Push: `git push origin AmazingFeature`

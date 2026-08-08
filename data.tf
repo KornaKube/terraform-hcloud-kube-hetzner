@@ -150,17 +150,19 @@ data "hcloud_servers" "existing_agent_nodes" {
   with_selector = "provisioner=terraform,engine=${local.kubernetes_distribution},cluster=${var.cluster_name},role=agent_node"
 }
 
-data "hcloud_image" "microos_x86_snapshot" {
+data "hcloud_images" "microos_x86_snapshots" {
   count             = contains(var.enabled_architectures, "x86") && local.os_arch_requirements.microos.x86 && var.microos_x86_snapshot_id == "" ? 1 : 0
   with_selector     = "microos-snapshot=yes"
-  with_architecture = "x86"
+  with_architecture = ["x86"]
+  with_status       = ["available"]
   most_recent       = true
 }
 
-data "hcloud_image" "microos_arm_snapshot" {
+data "hcloud_images" "microos_arm_snapshots" {
   count             = contains(var.enabled_architectures, "arm") && local.os_arch_requirements.microos.arm && var.microos_arm_snapshot_id == "" ? 1 : 0
   with_selector     = "microos-snapshot=yes"
-  with_architecture = "arm"
+  with_architecture = ["arm"]
+  with_status       = ["available"]
   most_recent       = true
 }
 
