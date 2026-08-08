@@ -27,7 +27,7 @@ require_text 'filebase64("${path.root}/scripts/verify-microos-image.sh")' 'Micro
 require_text 'filebase64("${path.root}/scripts/install-verified-rancher-rpm.sh")' 'verified Rancher RPM installer is not embedded'
 require_text 'filebase64("${path.root}/scripts/verify-rancher-rpm.sh")' 'verified Rancher RPM verifier is not embedded'
 
-require_text 'a515dd18f47396b75b1dd5b1c3f739b810cc2d01df1fe8aeea61665f2e4932eb' 'reviewed x86 MicroOS image digest is missing'
+require_text '514010036aad0b4b35ec16039e11f6ae9cf6d550a7f5fa460e80beb801e22740' 'reviewed x86 MicroOS image digest is missing'
 require_text 'e291d2f6497b70079120fbb46f42caa6d92b051fdef0ee163d8c3cc4a50ad789' 'reviewed ARM MicroOS image digest is missing'
 require_text 'aaaf5a0632d77db8c5808c6d1097167c934602639d628526c1ec0bd9cb2dd745' 'reviewed k3s-selinux MicroOS RPM digest is missing'
 require_text '0c3b1184293a2f47482d6333aa183b91ed9351889925b55760208a37a1f68a39' 'reviewed rke2-selinux MicroOS RPM digest is missing'
@@ -215,7 +215,7 @@ explicit_official_x86_digest="$(printf 'local.opensuse_microos_x86_expected_sha2
   -var "opensuse_microos_x86_mirror_link=$official_x86_url" "$template")"
 explicit_official_arm_digest="$(printf 'local.opensuse_microos_arm_expected_sha256_computed\n' | "$packer_bin" console \
   -var "opensuse_microos_arm_mirror_link=$official_arm_url" "$template")"
-[[ "$explicit_official_x86_digest" == a515dd18f47396b75b1dd5b1c3f739b810cc2d01df1fe8aeea61665f2e4932eb ]] \
+[[ "$explicit_official_x86_digest" == 514010036aad0b4b35ec16039e11f6ae9cf6d550a7f5fa460e80beb801e22740 ]] \
   || fail 'explicit legacy x86 official URL no longer selects official digest mode'
 [[ "$explicit_official_arm_digest" == e291d2f6497b70079120fbb46f42caa6d92b051fdef0ee163d8c3cc4a50ad789 ]] \
   || fail 'explicit legacy ARM official URL no longer selects official digest mode'
