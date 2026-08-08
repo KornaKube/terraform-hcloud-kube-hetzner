@@ -17,22 +17,21 @@ if grep -Eq '^[[:space:]]+workflow_dispatch:' "$workflow"; then
   fail "release workflow must not execute a caller-selected workflow definition"
 fi
 grep -Fq 'contents: write' "$workflow" || fail "release job needs explicit contents write permission"
+grep -Fq 'pull-requests: read' "$workflow" || fail "generated release notes need pull-request read permission"
 grep -Fq 'persist-credentials: false' "$workflow" || fail "release checkout credentials must not persist"
-grep -Fq 'fetch-depth: 0' "$workflow" || fail "release topology gate needs complete commit history"
-grep -Fq 'git fetch --no-tags origin master' "$workflow" \
-  || fail "release workflow does not refresh authoritative master"
-grep -Fq 'scripts/check-release-ref-on-remote-default-branch.sh HEAD refs/remotes/origin/master' "$workflow" \
-  || fail "release workflow does not prove the tag target is contained in authoritative master"
-grep -Fq 'scripts/check-release-bootstrap-topology.sh --require-merge HEAD' "$workflow" \
-  || fail "release workflow does not enforce the protected-merge functional-tree topology"
-grep -Fq 'scripts/tests/test_readme_release_bootstrap.sh --require-pinned' "$workflow" \
-  || fail "release workflow does not execute the real pinned bootstrap gate"
+grep -Fq "test \"\$(grep -Ec '^## \\[Unreleased\\]$' CHANGELOG.md)\" -eq 1" "$workflow" \
+  || fail "release publication must require exactly one Unreleased section"
+grep -Fq "grep -Eq '[^[:space:]]' changelog_section.md" "$workflow" \
+  || fail "release publication must reject empty reviewed notes"
+grep -Fq 'uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0' "$workflow" \
+  || fail "release publication action must remain commit-pinned"
+if grep -Eq 'HCLOUD_TOKEN|terraform|packer|gh api|filter-release-pr-authors|format-release-coauthors' "$workflow"; then
+  fail "tag publication must not repeat local infrastructure gates or custom contributor API processing"
+fi
 
-remote_line="$(grep -n 'scripts/check-release-ref-on-remote-default-branch.sh HEAD refs/remotes/origin/master' "$workflow" | cut -d: -f1)"
-topology_line="$(grep -n 'scripts/check-release-bootstrap-topology.sh --require-merge HEAD' "$workflow" | cut -d: -f1)"
+extract_line="$(grep -n 'name: Extract reviewed changelog' "$workflow" | cut -d: -f1)"
 release_line="$(grep -n 'uses: ncipollo/release-action@' "$workflow" | cut -d: -f1)"
-[[ "$remote_line" -lt "$topology_line" && "$topology_line" -lt "$release_line" ]] \
-  || fail "release tree must be verified before the release action executes"
+[[ "$extract_line" -lt "$release_line" ]] || fail "reviewed changelog extraction must precede publication"
 
 grep -Fq 'scripts/tests/test_release_bootstrap_topology.sh' "$lint_workflow" \
   || fail "pull-request CI omits adversarial release topology fixtures"
@@ -44,12 +43,10 @@ grep -Fq 'scripts/tests/test_release_atomic_tag_push.sh' "$lint_workflow" \
   || fail "pull-request CI omits the atomic tag-push race fixture"
 grep -Fq 'scripts/check-release-bootstrap-pr-gate.sh' "$lint_workflow" \
   || fail "pull-request CI does not fail closed across placeholder and pinned states"
-packer_job="$(sed -n '/^  packer-validate:/,/^  [a-zA-Z0-9_-]*:/p' "$lint_workflow")"
-grep -Fq 'fetch-depth: 0' <<< "$packer_job" \
-  || fail "required pull-request supply-chain job does not fetch the A/B history"
-if grep -Fq "grep -Fq '__KH_SOURCE_COMMIT__' README.md" "$lint_workflow"; then
-  fail "pull-request CI still uses the marker-in-prose bypassable classifier"
-fi
+grep -Fq 'KH_RELEASE_BASE_REF: ${{ github.event.pull_request.base.sha }}' "$lint_workflow" \
+  || fail "pull-request bootstrap comparison is not anchored to the trusted base commit"
+[[ ! -e "$repo_root/.github/workflows/trusted_hcloud_smoke.yaml" ]] \
+  || fail "GitHub-hosted HCloud smoke must be removed"
 
 grep -Fq '**merge-commit** method' "$release_skill" \
   || fail "release process does not forbid squash/rebase destruction of the A/B graph"
@@ -69,7 +66,7 @@ tag_line="$(grep -n "git tag -a \"\$VERSION\" \"\$RELEASE_COMMIT\" -m \"Release 
 push_line="$(grep -n "git push --atomic --force-with-lease=\"refs/heads/master:\$RELEASE_COMMIT\"" <<< "$execute_release" | cut -d: -f1)"
 grep -Fq "\"\${RELEASE_COMMIT}:refs/heads/master\" \"refs/tags/\$VERSION\"" <<< "$execute_release" \
   || fail "release tag push does not atomically lease protected master"
-[[ "$initial_fetch_line" -lt "$merge_line" && "$merge_line" -lt "$topology_line" && "$topology_line" -lt "$controls_line" && "$bootstrap_line" -lt "$controls_line" && "$controls_line" -lt "$final_fetch_line" && "$final_fetch_line" -lt "$remote_line" && "$remote_line" -lt "$head_line" && "$head_line" -lt "$tag_line" && "$tag_line" -lt "$push_line" ]] \
-  || fail "slow immutable gates must precede final live controls, refreshed master, and lease-guarded tag publication"
+[[ "$initial_fetch_line" -lt "$merge_line" && "$merge_line" -lt "$topology_line" && "$topology_line" -lt "$bootstrap_line" && "$bootstrap_line" -lt "$controls_line" && "$controls_line" -lt "$final_fetch_line" && "$final_fetch_line" -lt "$remote_line" && "$remote_line" -lt "$head_line" && "$head_line" -lt "$tag_line" && "$tag_line" -lt "$push_line" ]] \
+  || fail "local immutable gates must precede live controls and lease-guarded tag publication"
 
-printf 'PASS: release publishing is tag-only and rejects trees that escape the pinned functional commit.\n'
+printf 'PASS: cheap GitHub publication is tag-only while release integrity and cloud proof remain local.\n'

@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Use when preparing or executing a release - verifies changelog content, updates version references, commits release prep, and, when the maintainer explicitly asks, pushes the release tag that triggers automation
+description: Use when preparing or executing a release - runs the authoritative local gates, verifies release content, and, when explicitly authorized, pushes the release tag
 ---
 
 # Prepare Release
@@ -19,7 +19,7 @@ Prepare a new release by generating changelog entries, updating version referenc
 
 **Do not create release tags just because this skill was invoked.** By default, prepare only.
 
-When Karim explicitly says to do the release (for example "release time" or "do the release"), create and push the annotated tag yourself, then monitor the release automation.
+When Karim explicitly says to do the release (for example "release time" or "do the release"), run the full local release gates, create and push the annotated tag yourself, then confirm the lightweight publication workflow.
 
 Default job:
 - Prepare the changelog
@@ -31,7 +31,7 @@ Maintainer-authorized release job:
 - Verify `master` is clean and up to date
 - Verify the release tag does not already exist locally or remotely
 - Create and push the annotated tag
-- Let `.github/workflows/publish-release.yaml` create the GitHub release
+- Let `.github/workflows/publish-release.yaml` publish the already-verified tag
 - Confirm the workflow and GitHub release succeeded
 
 ## Current Release Automation
@@ -41,14 +41,17 @@ The repository has tag-driven release automation in `.github/workflows/publish-r
 Important details:
 - The workflow runs only on pushed `v*` tags and has no manual-dispatch path.
 - It extracts the Markdown release content from `CHANGELOG.md`, specifically everything under `## [Unreleased]` until the next `## [` heading.
-- It appends the generated contributor list and GitHub's generated release notes.
+- It rejects a missing, duplicate, or empty `[Unreleased]` section.
+- It asks GitHub to append generated release notes.
 - It creates the GitHub release with `ncipollo/release-action`.
+- It does not run Terraform, Packer, HCloud, bootstrap, or cluster gates. Those
+  are authoritative local pre-tag checks.
 
 Therefore:
 - `CHANGELOG.md` is the release-content Markdown file.
 - Keep the target release notes under `## [Unreleased]` until after the release tag is pushed.
 - Do not move `[Unreleased]` to `[vX.Y.Z] - YYYY-MM-DD` before tagging unless you are also bypassing the workflow and manually providing release notes.
-- Do not run `gh release create` during the normal path; the tag workflow owns release creation. Use `gh release create` only as a recovery path if the workflow fails.
+- Do not run `gh release create` during the normal path; the tag workflow owns publication. Use it only after re-running the local integrity gates if publication fails.
 - If Karim asks for a tiny release-prep correction during release, commit it on the release branch, merge it through the protected `master` pull-request path, then tag the resulting merged commit.
 - After a successful release, cut `CHANGELOG.md`: reset `## [Unreleased]` to an empty placeholder and move the released notes under `## [X.Y.Z] - YYYY-MM-DD`. Merge that cleanup through a release-maintenance pull request.
 - Previous release notes must never remain under `## [Unreleased]`; otherwise the next tag workflow will publish stale notes again.
@@ -62,14 +65,14 @@ Therefore:
 
 ## Contributor Credit (SUPER IMPORTANT)
 
-The release's contributors list is generated from the commit authors that landed in `master` since the previous tag. Original PR submitters MUST appear there — credit where credit is due.
+GitHub-generated notes and the changelog expose the people whose work landed since the previous tag. Original PR submitters MUST remain visible — credit where credit is due.
 
 - Upstream requirement (enforced at merge time, see the `review-pr` skill): community contributions keep the contributor as commit **author** in master history. Squash only when the PR contains solely their commits; use merge/rebase-merge when we pushed fixes on top; cherry-pick with preserved authorship or `Co-authored-by:` trailers when adopting their work into our own branches.
 - Promotion or major integration PRs, such as the v3 staging-to-master train,
   must merge with a merge commit. Never squash those PRs; squashing erases the
-  per-commit community authors that feed the contributors list.
+  per-commit community authors that feed repository and release credit.
 - Pre-tag check: `git log <prev-tag>..HEAD --format='%an <%ae>' | sort -u` — every community contributor whose fix is in the release must be listed. If someone is missing, fix history/credit BEFORE tagging (after tagging it is public and immutable).
-- Post-release check: the `## 👥 Contributors` section of the live release body must include the original submitters, not just maintainers. If it does not, treat it as a release defect: edit the release body to add them and fix the crediting for next time.
+- Post-release check: generated notes and changelog thanks must include the original submitters, not just maintainers. If someone is missing, treat it as a release defect and edit the release body.
 - Changelog entries for community fixes reference their PR/issue numbers so the human credit is also visible in prose.
 
 ## Workflow
@@ -251,23 +254,25 @@ scripts/tests/test_readme_release_bootstrap.sh --require-pinned
 ```
 
 The GitHub control check is a live, authenticated pre-release gate. It verifies
-that the default branch requires pull requests and blocks force-push/deletion,
-the `hcloud-smoke` environment is restricted to the default branch with a
-required maintainer review and no admin bypass, and `v*` tags have an active
-creation/update/deletion/non-fast-forward ruleset. A repository fixture cannot
-substitute for these live settings.
+that the default branch requires pull requests plus the cheap lint check and
+blocks force-push/deletion, `v*` tags have an active creation/update/deletion/
+non-fast-forward ruleset, and no GitHub-hosted HCloud environment remains. A
+repository fixture cannot substitute for these live settings.
 
 The README bootstrap uses a two-commit release invariant to avoid a circular
 archive hash:
 
-1. Freeze and push functional commit `A`, with the README pin placeholders
-   still present. No runtime, Packer, verifier, installer, workflow, or
-   cloud-init byte may change after this point without restarting the process.
+1. Freeze and push functional commit `A`, retaining the previous release's
+   valid README pins. The initial bootstrap rollout may use all three exact
+   placeholders, but a pinned default branch must never regress to placeholders.
+   No runtime, Packer, verifier, installer, workflow, or cloud-init byte may
+   change after this point without restarting the process.
 2. Download the canonical Codeload archive for full commit `A` over strict
    HTTPS and calculate its SHA-256 independently. Calculate the SHA-256 of
    `packer-template/security-bundle.sha256` from commit `A` as well.
-3. In release-preparation commit `B`, replace only the README bootstrap
-   placeholders with commit `A`, the archive digest, and the manifest digest.
+3. In release-preparation commit `B`, replace only the three prior README
+   bootstrap pin values with commit `A`, the archive digest, and the manifest
+   digest.
 4. Run `scripts/check-release-bootstrap-topology.sh HEAD` and
    `scripts/tests/test_readme_release_bootstrap.sh --require-pinned`. The first
    gate proves `A` is an ancestor, the release tree differs from `A` only in
@@ -278,10 +283,10 @@ archive hash:
 5. Merge both commits through the protected release pull request using GitHub's
    **merge-commit** method. Squash and rebase merges destroy the reviewed A/B
    graph and are forbidden for this PR. The merge tree must equal `B`, and the
-   other merge parent must already be ancestral to `A`. The tag workflow
-   repeats both gates before publication. Record post-`A` evidence in the
-   release PR or external run logs; any repository edit beyond the three README
-   pins requires a new `A`, new pins, and repeated exact-tree gates.
+   other merge parent must already be ancestral to `A`. Record post-`A`
+   evidence in the release PR or local run logs; any repository edit beyond the
+   three README pins requires a new `A`, new pins, and repeated exact-tree
+   gates. The tag workflow only publishes the locally verified result.
 
 Cross-variable and local-dependent module contract failures are hard
 `terraform_data.validation_contract` preconditions, so invalid-combination
@@ -319,14 +324,10 @@ documented external access pattern for operator/app endpoints; kube-hetzner does
 not manage Cloudflare provider resources, and Cloudflare Mesh/WARP is not a v3
 node-transport support promise.
 
-For CI, require a completed success for every release-blocking workflow/job.
-"No failures" is not enough: a required gate can hide by hanging forever or by
-being cancelled before it reports red. Verify run/job history with `gh run
-list` and `gh run view`. If a Hetzner run fails with `resource_unavailable` or
-"error during placement", rerun failed jobs with `gh run rerun <run-id>
---failed`. Avoid `gh run cancel` on in-flight Hetzner runs; cancellation skips
-destroy and can orphan `kh-ci-*-<runid6><attempt>*` resources that must be swept
-after the run reports completed.
+For the required cheap PR lint, require a completed success. GitHub Actions do
+not run HCloud plans, applies, cluster inspection, or destroy. Run those gates
+locally from the maintained kube-test roots and retain their logs before tag
+publication.
 
 ### Release Notes Template
 
@@ -428,12 +429,22 @@ git tag -a "$VERSION" "$RELEASE_COMMIT" -m "Release $VERSION"
 git push --atomic --force-with-lease="refs/heads/master:$RELEASE_COMMIT" origin \
   "${RELEASE_COMMIT}:refs/heads/master" "refs/tags/$VERSION"
 
-# Monitor automation and confirm the release exists.
+# Confirm the lightweight publication workflow and release.
 gh run list --repo "$REPO" --workflow "Publish a new Github Release" --limit 1
 gh release view "$VERSION" --repo "$REPO"
 ```
 
-If the workflow fails because of a transient GitHub or provider error, rerun the failed workflow/job and re-check. If release creation itself failed permanently, then use `gh release create "$VERSION" --title "$VERSION" --notes-file <file>` as a recovery path after confirming no partial release exists.
+If publication fails, do not move the immutable tag. Re-run the local
+remote-tree, topology, real-bootstrap, and GitHub-control gates against the tag
+target, regenerate the exact release body from that tag's `[Unreleased]`
+section, confirm no partial release exists, then use
+`gh release create "$VERSION" --title "$VERSION" --notes-file <file> --generate-notes`.
+
+A pushed release tag is immutable. If the workflow definition at that tag has a
+permanent defect, do not move or recreate the tag: manually create the release
+from that tag's reviewed release content only after the local gates above,
+verify the public body and tag target, then repair the cheap publication
+workflow through a post-release pull request.
 
 ## Post-Release Verification
 
@@ -480,7 +491,7 @@ Files that may need version updates:
 | File | What to Update |
 |------|---------------|
 | `README.md` | Badge versions |
-| `CHANGELOG.md` | Release content must stay under `[Unreleased]` until tag workflow runs |
+| `CHANGELOG.md` | Release content must stay under `[Unreleased]` until tag publication runs |
 | `docs/llms.md` | Example version references |
 | `kube.tf.example` | Version in comments |
 | `.claude/skills/*/SKILL.md` | Operator workflows, v3 migration names, validation gates |
@@ -509,13 +520,14 @@ Files that may need version updates:
 - [ ] `scripts/check-release-bootstrap-topology.sh HEAD` proves the release tree is functional commit A plus only the three README pins
 - [ ] `scripts/tests/test_readme_release_bootstrap.sh --require-pinned` passed against the real Codeload archive
 - [ ] Adversarial and live GitHub release-control gates passed
-- [ ] Every release-blocking CI job has a completed successful run, not merely no visible failures
+- [ ] Required cheap PR lint has a completed successful run
+- [ ] HCloud plan/apply, cluster inspection, and destroy evidence was produced locally
 - [ ] Release notes drafted
 - [ ] Changes committed and pushed
 - [ ] If explicitly authorized, tag pushed
 - [ ] Release workflow succeeded
 - [ ] GitHub release exists and points at the intended commit
 - [ ] Live GitHub release body contains only content relevant to this release
-- [ ] Live release `## 👥 Contributors` section credits the original PR submitters, not just maintainers
+- [ ] Live release notes and changelog thanks credit the original PR submitters
 - [ ] Pinned upgrade notice, if used, covers the previous-series-to-current upgrade path
 - [ ] `CHANGELOG.md` is cut after release, with a clean `[Unreleased]` section

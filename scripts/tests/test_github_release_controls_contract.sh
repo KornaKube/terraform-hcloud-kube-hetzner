@@ -78,28 +78,6 @@ verify_repository_settings "$repository" || fail "safe repository settings were 
 expect_rejected verify_repository_settings "$(jq '.allow_merge_commit = false' <<< "$repository")" "disabled merge-commit integration"
 expect_rejected verify_repository_settings "$(jq '.default_branch = "main"' <<< "$repository")" "wrong default branch"
 
-environment='{
-  "can_admins_bypass":false,
-  "deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true},
-  "protection_rules":[{
-    "type":"required_reviewers",
-    "prevent_self_review":false,
-    "reviewers":[{"type":"User","reviewer":{"login":"mysticaltech"}}]
-  },{"type":"branch_policy"}]
-}'
-verify_hcloud_environment "$environment" || fail "safe HCloud environment was rejected"
-expect_rejected verify_hcloud_environment "$(jq '.protection_rules[0].reviewers += [{"type":"User","reviewer":{"login":"attacker"}}]' <<< "$environment")" "additional environment reviewer"
-expect_rejected verify_hcloud_environment "$(jq '.can_admins_bypass = true' <<< "$environment")" "environment admin bypass"
-expect_rejected verify_hcloud_environment "$(jq '.protection_rules += [{"type":"wait_timer","wait_timer":0}]' <<< "$environment")" "additional environment protection rule"
-
-policies='{"total_count":1,"branch_policies":[{"name":"master","type":"branch"}]}'
-verify_hcloud_environment_policies "$policies" || fail "safe deployment policy was rejected"
-expect_rejected verify_hcloud_environment_policies "$(jq '.branch_policies += [{"name":"release/*","type":"branch"}] | .total_count = 2' <<< "$policies")" "additional deployment branch"
-
-secrets='{"total_count":1,"secrets":[{"name":"HCLOUD_TOKEN"}]}'
-verify_hcloud_environment_secrets "$secrets" || fail "expected HCloud secret was rejected"
-expect_rejected verify_hcloud_environment_secrets "$(jq '.secrets += [{"name":"SECOND_TOKEN"}] | .total_count = 2' <<< "$secrets")" "additional environment secret"
-
 # shellcheck disable=SC2329 # Invoked indirectly by fetch_paginated_array.
 gh() {
   [[ "$#" == 4 && "$1" == "api" && "$2" == "--paginate" && "$3" == "--slurp" && "$4" == "fixture-pages" ]] || return 1
@@ -162,4 +140,31 @@ expect_rejected verify_tag_ruleset "$(jq '.conditions.ref_name.exclude = ["refs/
 expect_rejected verify_tag_ruleset "$(jq '.bypass_actors += [{"actor_type":"RepositoryRole","actor_id":4,"bypass_mode":"always"}]' <<< "$tag_ruleset")" "additional tag bypass actor"
 expect_rejected verify_tag_ruleset "$(jq '.rules |= map(select(.type != "creation"))' <<< "$tag_ruleset")" "missing tag creation rule"
 
-printf 'PASS: release-control predicates reject exclusions, extra principals, extra secrets, and incomplete rules.\n'
+# shellcheck disable=SC2329 # Invoked indirectly by verify_environment_absent.
+gh() {
+  [[ "$1" == api && "$2" == --include && "$3" == fixture-environment ]] || return 1
+  case "$GH_ENVIRONMENT_FIXTURE" in
+    absent)
+      printf 'HTTP/2.0 404 Not Found\n'
+      return 1
+      ;;
+    exists)
+      printf 'HTTP/2.0 200 OK\n\n{}\n'
+      ;;
+    unavailable)
+      printf 'gh: network unavailable\n' >&2
+      return 1
+      ;;
+  esac
+}
+GH_ENVIRONMENT_FIXTURE=absent verify_environment_absent fixture-environment \
+  || fail "confirmed absent environment was rejected"
+if GH_ENVIRONMENT_FIXTURE=exists verify_environment_absent fixture-environment >/dev/null 2>&1; then
+  fail "existing environment was accepted as absent"
+fi
+if GH_ENVIRONMENT_FIXTURE=unavailable verify_environment_absent fixture-environment >/dev/null 2>&1; then
+  fail "GitHub API failure was accepted as environment absence"
+fi
+unset -f gh
+
+printf 'PASS: release-control predicates reject exclusions, extra principals, and incomplete rules without depending on hosted cloud credentials.\n'

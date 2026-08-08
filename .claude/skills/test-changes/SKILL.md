@@ -305,11 +305,9 @@ gh run view <run-id> --repo kube-hetzner/terraform-hcloud-kube-hetzner --json st
 
 The render-harness `Lint` job once hid by hanging for its whole lifetime via
 `setup-terraform`'s stdin-swallowing wrapper; `.github/workflows/lint_pr.yaml`
-now keeps that wrapper disabled. Hetzner `resource_unavailable` or "error during
-placement" is a capacity flake: use `gh run rerun <run-id> --failed`. Avoid
-`gh run cancel` on in-flight Hetzner runs; it skips destroy and can orphan
-attempt-suffixed `kh-ci-*-<runid6><attempt>*` resources that must be swept after
-the run reports completed.
+keeps that wrapper disabled. GitHub CI is intentionally limited to cheap
+checks. Run every HCloud plan/apply, Kubernetes inspection, and destroy locally
+from the maintained kube-test roots.
 
 ## Common Issues
 
