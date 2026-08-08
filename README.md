@@ -148,9 +148,9 @@ OpenTofu is officially supported. Pull requests are validated in CI with both Te
 (
   set -eu
   umask 077
-  kh_commit="__KH_SOURCE_COMMIT__"
-  kh_archive_sha256="__KH_SOURCE_ARCHIVE_SHA256__"
-  kh_manifest_sha256="__KH_PACKER_BUNDLE_MANIFEST_SHA256__"
+  kh_commit="eb6d1f2f24bb5bc8df028305b394f15f98a872f3"
+  kh_archive_sha256="d740d07886d9e46666a9514e0d3c57130f73028ade8d1790f106758e08c3f552"
+  kh_manifest_sha256="ea2605de0a45de6cf258d24451482a53d01cdbf4249bad7f2dae8c5a02520330"
 
   printf '%s\n' "$kh_commit" | grep -Eq '^[0-9a-f]{40}$' || {
     echo "The release bootstrap is missing its immutable source commit." >&2
