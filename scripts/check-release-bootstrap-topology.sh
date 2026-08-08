@@ -43,6 +43,27 @@ normalize_pin_lines() {
   ' "$1"
 }
 
+classify_functional_pins() {
+  local readme="$1"
+  local commit archive_sha256 manifest_sha256
+
+  commit="$(extract_pin kh_commit "$readme")"
+  archive_sha256="$(extract_pin kh_archive_sha256 "$readme")"
+  manifest_sha256="$(extract_pin kh_manifest_sha256 "$readme")"
+
+  if [[ "$commit" == "__KH_SOURCE_COMMIT__" &&
+        "$archive_sha256" == "__KH_SOURCE_ARCHIVE_SHA256__" &&
+        "$manifest_sha256" == "__KH_PACKER_BUNDLE_MANIFEST_SHA256__" ]]; then
+    printf 'placeholders\n'
+  elif [[ "$commit" =~ ^[0-9a-f]{40}$ &&
+          "$archive_sha256" =~ ^[0-9a-f]{64}$ &&
+          "$manifest_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    printf 'pinned\n'
+  else
+    fail "functional README must retain either three previous release pins or three exact placeholders"
+  fi
+}
+
 cd "$repo_root"
 git cat-file -e "${release_ref}^{commit}" 2>/dev/null \
   || fail "release ref is not a commit: $release_ref"
@@ -118,20 +139,11 @@ pin_readme_mode="$(git ls-tree "$pin_commit" -- README.md | awk '{ print $1 }')"
   || fail "README file mode changed after the functional commit"
 
 git show "${functional_commit}:README.md" > "$tmp/functional-readme"
-for placeholder in \
-  __KH_SOURCE_COMMIT__ \
-  __KH_SOURCE_ARCHIVE_SHA256__ \
-  __KH_PACKER_BUNDLE_MANIFEST_SHA256__
-do
-  [[ "$(grep -Fc "$placeholder" "$tmp/functional-readme")" == 1 ]] \
-    || fail "functional README must contain exactly one $placeholder"
-  if grep -Fq "$placeholder" "$tmp/release-readme"; then
-    fail "release README still contains $placeholder"
-  fi
-done
+classify_functional_pins "$tmp/functional-readme" >/dev/null
 
+normalize_pin_lines "$tmp/functional-readme" > "$tmp/normalized-functional-readme"
 normalize_pin_lines "$tmp/release-readme" > "$tmp/normalized-release-readme"
-cmp -s "$tmp/functional-readme" "$tmp/normalized-release-readme" \
+cmp -s "$tmp/normalized-functional-readme" "$tmp/normalized-release-readme" \
   || fail "README changed outside the three release bootstrap pin assignments"
 
 git show "${functional_commit}:packer-template/security-bundle.sha256" > "$tmp/security-bundle.sha256"

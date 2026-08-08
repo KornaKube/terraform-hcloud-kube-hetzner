@@ -312,15 +312,10 @@ the `Lint` workflow's render-harness job is not hanging; `.github/workflows/lint
 keeps `setup-terraform`'s wrapper disabled because the wrapper swallows stdin and
 can make the render-harness job hang for its entire lifetime.
 
-Hetzner live-test failures need different handling:
-- `resource_unavailable` or "error during placement" is usually Hetzner
-  capacity. Use `gh run rerun <run-id> --failed`; do not do code archaeology
-  unless the rerun fails for a deterministic module reason.
-- Avoid `gh run cancel` on an in-flight Hetzner run. Cancellation skips destroy
-  cleanup and can orphan clusters.
-- If a Hetzner run was manually cancelled anyway, wait until the run reports
-  completed, then sweep the attempt-suffixed resources matching
-  `kh-ci-*-<runid6><attempt>*` before trusting the environment again.
+GitHub CI is intentionally limited to cheap checks. HCloud plan/apply,
+Kubernetes inspection, and destroy evidence must come from local kube-test
+roots and must be reviewed independently before merge when the change warrants
+live proof.
 
 ### Output in Final Review
 
@@ -417,17 +412,17 @@ gh pr merge <num> --squash --delete-branch   # default only for contributor-only
 
 ## Preserve Contributor Credit When Merging (SUPER IMPORTANT)
 
-Original PR submitters must remain visible as commit authors in `master` history — that is what feeds both the GitHub repo contributors graph and the auto-generated contributors list in each release (`.github/workflows/publish-release.yaml`). Credit where credit is due, always.
+Original PR submitters must remain visible as commit authors in `master` history — that feeds both the GitHub repo contributors graph and GitHub-generated release notes. Credit where credit is due, always.
 
 Rules by situation:
 
 1. **PR contains only the contributor's commits** → `--squash` is safe: GitHub sets the squash commit's *author* to the PR author (we are only the committer). This is the default path.
 2. **We pushed fix-up commits on top of their branch** → do NOT squash (squashing collapses authorship to a single author and can erase them). Use a merge commit (`gh pr merge --merge`) or rebase-merge (`--rebase`) so their original commits survive in history with their authorship intact.
 3. **We rework their contribution in our own branch/PR** (conflict resolution, adopting a patch from an issue, or porting between release trains) → `git cherry-pick` their original commit(s) FIRST so the `Author:` field stays theirs, then add our fixes as separate commits. If cherry-pick is impossible (e.g. the patch came as a diff/snippet in an issue), add a `Co-authored-by: Name <email>` trailer to our commit and credit them by handle in the commit message and changelog entry.
-4. **Promotion or major integration PRs** (for example a release-candidate PR carrying multiple community commits) → merge commit only. Never squash; the release contributor list depends on preserving every community author that already landed in the train.
+4. **Promotion or major integration PRs** (for example a release-candidate PR carrying multiple community commits) → merge commit only. Never squash; release credit depends on preserving every community author that already landed in the train.
 5. **Never** amend or reauthor a contributor's commit in a way that removes them from the history.
 
-Before merging, sanity-check: `git log --format='%an %ae' <range>` on what will land in master — the contributor's name must appear. After a release, verify they show up in the generated contributors section of the release body.
+Before merging, sanity-check: `git log --format='%an %ae' <range>` on what will land in master — the contributor's name must appear. After a release, verify they show up in GitHub-generated notes or explicit changelog thanks.
 
 ## Integrate-and-Fix Flow (DEFAULT for good-but-imperfect PRs)
 

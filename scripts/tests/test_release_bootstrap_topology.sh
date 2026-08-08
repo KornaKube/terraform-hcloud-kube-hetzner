@@ -80,6 +80,22 @@ safe_merge="$(git -C "$fixture" rev-parse HEAD)"
 "$fixture/scripts/check-release-bootstrap-topology.sh" --require-merge "$safe_merge" >/dev/null \
   || fail "safe protected merge topology was rejected"
 
+# Subsequent releases retain the previous valid pins in functional commit A;
+# only the release-preparation commit B replaces those three values.
+git -C "$fixture" checkout -q -b retained-pins "$safe_release"
+printf '%s\n' 'next release functionality' > "$fixture/runtime.tf"
+git -C "$fixture" add runtime.tf
+git -C "$fixture" commit -q -m 'next functional commit with previous pins'
+retained_pins_functional="$(git -C "$fixture" rev-parse HEAD)"
+retained_manifest_sha256="$(shasum -a 256 "$fixture/packer-template/security-bundle.sha256" | awk '{ print $1 }')"
+pin_readme "$fixture/README.md" "$tmp/retained-pins-readme" \
+  "$retained_pins_functional" "$archive_sha256" "$retained_manifest_sha256"
+mv "$tmp/retained-pins-readme" "$fixture/README.md"
+git -C "$fixture" add README.md
+git -C "$fixture" commit -q -m 'repin next release bootstrap'
+"$fixture/scripts/check-release-bootstrap-topology.sh" HEAD >/dev/null \
+  || fail "functional commit retaining previous release pins was rejected"
+
 git -C "$fixture" checkout -q -b functional-drift "$safe_release"
 printf '%s\n' 'unverified functional change' > "$fixture/runtime.tf"
 git -C "$fixture" add runtime.tf

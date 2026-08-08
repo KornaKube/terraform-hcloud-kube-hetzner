@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Changes
+
+- Kept GitHub CI focused on cheap required lint, documentation drift, and tag publication; HCloud smoke, credentials, cluster inspection, and teardown now remain local. Tag publication rejects missing release notes, while the local bootstrap gate prevents pinned releases from regressing to placeholders and lets future functional commits retain the previous valid pins.
+
+---
+
+## [3.1.0] - 2026-08-08
+
 ### ⚠️ Upgrade Notes
 
 - **IPv6/dual-stack clusters:** static control-plane and agent nodes now render `node-ip` values that match the configured cluster CIDR families when `cluster_ipv6_cidr` / `service_ipv6_cidr` are set. Do not enable dual-stack in-place on an existing IPv4-only k3s/RKE2 cluster; cluster/service CIDR families are bootstrap-time choices and require a new cluster or blue/green migration. This adds new plan-time rejections for configurations that previously planned but could not boot correctly: missing effective public IPv6 on any static HCloud node, IPv6-only pod/service CIDRs on the standard private-network path, active autoscaler nodepools on the standard private-network path, `nat_router` with IPv6 cluster CIDRs, `extra_robot_nodes` with IPv6 cluster CIDRs, `node_transport_mode = "tailscale"` with IPv6 cluster CIDRs, public-overlay transport families that omit an enabled cluster CIDR family, and Cilium native routing with IPv6 cluster CIDRs. Use dual-stack, the default Cilium tunnel mode, static HCloud nodes, and public IPv6-enabled nodepools for the standard path.

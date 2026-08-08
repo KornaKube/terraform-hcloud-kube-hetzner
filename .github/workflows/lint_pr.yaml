@@ -130,6 +130,7 @@ jobs:
       - name: Validate Packer template and verifier fixtures
         env:
           PACKER_PLUGIN_PATH: ${{ runner.temp }}/packer-plugins
+          KH_RELEASE_BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: |
           packer fmt -check packer-template/hcloud-leapmicro-snapshots.pkr.hcl packer-template/hcloud-microos-snapshots.pkr.hcl
           packer validate -syntax-only packer-template/hcloud-leapmicro-snapshots.pkr.hcl
@@ -160,7 +161,6 @@ jobs:
           scripts/tests/test_rancher_rpm_installer.sh
           scripts/tests/test_pr_scanner_contract.sh
           scripts/tests/test_release_workflow_contract.sh
-          scripts/tests/test_trusted_hcloud_smoke_contract.sh
           scripts/tests/test_verified_kubernetes_installer.sh
 
       - name: Verify pinned Rancher SELinux release artifacts

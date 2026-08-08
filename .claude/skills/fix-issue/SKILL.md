@@ -221,7 +221,7 @@ git push -u origin fix/issue-<number>-<description>
 
 ### Contributor Credit (SUPER IMPORTANT)
 
-If the fix originates from a community member's work — a patch posted in the issue, a diff from their fork, or an abandoned/superseded PR — preserve their credit in git history so they appear in the repo contributors graph and in the release's generated contributors list:
+If the fix originates from a community member's work — a patch posted in the issue, a diff from their fork, or an abandoned/superseded PR — preserve their credit in git history so they appear in the repo contributors graph and GitHub-generated release notes:
 
 - If their work exists as commits (fork branch, closed PR): `git cherry-pick` those commits FIRST (keeps them as `Author:`), then add your changes as separate commits on top. Never squash their authorship away (see the `review-pr` skill for merge-method rules).
 - If their work was only a snippet/diff/instructions in the issue thread: add a `Co-authored-by: Name <email>` trailer to your commit (use their GitHub noreply email `<id>+<login>@users.noreply.github.com` if no public email), and credit their handle in the commit body and changelog entry.
@@ -277,7 +277,7 @@ contributors are volunteers giving the project their time.
 - **On community PRs**: thank the contributor by handle. If we merged their
   work via the integrate-and-fix flow, say what we adjusted on top and why —
   the delta is a gift, not a critique — and confirm their commit authorship is
-  preserved so they appear in the release contributors.
+  preserved so they appear in the release credit.
 - **When the report is a user error**: still thank them, show the corrected
   configuration, and never make them feel foolish — config mistakes usually
   mean our docs have a gap; consider fixing the doc too.

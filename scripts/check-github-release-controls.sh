@@ -4,7 +4,6 @@ set -euo pipefail
 
 readonly RELEASE_REPOSITORY="mysticaltech/terraform-hcloud-kube-hetzner"
 readonly RELEASE_DEFAULT_BRANCH="master"
-readonly RELEASE_MAINTAINER="mysticaltech"
 readonly HCLOUD_SMOKE_ENVIRONMENT="hcloud-smoke"
 readonly REQUIRED_STATUS_CHECK_CONTEXT="Validate Packer and supply-chain fixtures"
 readonly REQUIRED_STATUS_CHECK_APP_ID=15368
@@ -50,39 +49,6 @@ verify_repository_settings() {
   jq -e --arg branch "$RELEASE_DEFAULT_BRANCH" '
     .default_branch == $branch and
     .allow_merge_commit == true
-  ' >/dev/null <<< "$1"
-}
-
-verify_hcloud_environment() {
-  jq -e --arg maintainer "$RELEASE_MAINTAINER" '
-    .can_admins_bypass == false and
-    .deployment_branch_policy.protected_branches == false and
-    .deployment_branch_policy.custom_branch_policies == true and
-    ([.protection_rules[].type] | sort) == (["branch_policy", "required_reviewers"] | sort) and
-    ([.protection_rules[] | select(.type == "required_reviewers")] | length) == 1 and
-    ([.protection_rules[] | select(.type == "branch_policy")] | length) == 1 and
-    ([.protection_rules[] | select(.type == "required_reviewers")][0]) as $review_rule |
-    $review_rule.prevent_self_review == false and
-    ($review_rule.reviewers | length) == 1 and
-    $review_rule.reviewers[0].type == "User" and
-    $review_rule.reviewers[0].reviewer.login == $maintainer
-  ' >/dev/null <<< "$1"
-}
-
-verify_hcloud_environment_policies() {
-  jq -e --arg branch "$RELEASE_DEFAULT_BRANCH" '
-    .total_count == 1 and
-    (.branch_policies | length) == 1 and
-    .branch_policies[0].name == $branch and
-    .branch_policies[0].type == "branch"
-  ' >/dev/null <<< "$1"
-}
-
-verify_hcloud_environment_secrets() {
-  jq -e '
-    .total_count == 1 and
-    (.secrets | length) == 1 and
-    .secrets[0].name == "HCLOUD_TOKEN"
   ' >/dev/null <<< "$1"
 }
 
@@ -185,6 +151,22 @@ verify_tag_ruleset() {
   ' >/dev/null <<< "$1"
 }
 
+verify_environment_absent() {
+  local environment_url="$1"
+  local response http_status
+
+  if response="$(gh api --include "$environment_url" 2>&1)"; then
+    printf 'ERROR: GitHub environment still exists: %s\n' "$environment_url" >&2
+    return 1
+  fi
+  http_status="$(awk '/^HTTP\// { status=$2 } END { print status }' <<< "$response")"
+  if [[ "$http_status" != 404 ]]; then
+    printf 'ERROR: GitHub environment absence could not be verified (HTTP %s):\n%s\n' \
+      "${http_status:-unknown}" "$response" >&2
+    return 2
+  fi
+}
+
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0
 fi
@@ -232,15 +214,6 @@ deployment_protection="$(gh api graphql \
 verify_branch_deployment_requirements "$deployment_protection" \
   || fail "$RELEASE_DEFAULT_BRANCH must have one exact branch-protection rule with no required deployments, deployment environments, or pull-request bypass actors"
 
-environment="$(gh api "repos/$RELEASE_REPOSITORY/environments/$HCLOUD_SMOKE_ENVIRONMENT")"
-verify_hcloud_environment "$environment" || fail "$HCLOUD_SMOKE_ENVIRONMENT must have exactly one maintainer reviewer and branch-policy rule, no admin bypass, and custom deployment branches"
-
-policies="$(gh api "repos/$RELEASE_REPOSITORY/environments/$HCLOUD_SMOKE_ENVIRONMENT/deployment-branch-policies")"
-verify_hcloud_environment_policies "$policies" || fail "$HCLOUD_SMOKE_ENVIRONMENT must allow only $RELEASE_DEFAULT_BRANCH"
-
-secrets="$(gh api "repos/$RELEASE_REPOSITORY/environments/$HCLOUD_SMOKE_ENVIRONMENT/secrets")"
-verify_hcloud_environment_secrets "$secrets" || fail "$HCLOUD_SMOKE_ENVIRONMENT must contain only HCLOUD_TOKEN"
-
 rulesets="$(fetch_paginated_array "repos/$RELEASE_REPOSITORY/rulesets?includes_parents=true&per_page=100")"
 verify_active_ruleset_inventory "$rulesets" || fail "the complete inherited ruleset catalog must contain the exact release controls and no additional active tag, push, or repository ruleset"
 
@@ -259,6 +232,16 @@ verify_tag_ruleset "$tag_ruleset" || fail "release-tag ruleset must protect ever
 if grep -Eq '^[[:space:]]+workflow_dispatch:' "$repo_root/.github/workflows/publish-release.yaml"; then
   fail "release workflow must be tag-only"
 fi
+[[ ! -e "$repo_root/.github/workflows/trusted_hcloud_smoke.yaml" ]] \
+  || fail "HCloud smoke must run locally, not in GitHub Actions"
+environment_absence_status=0
+verify_environment_absent "repos/$RELEASE_REPOSITORY/environments/$HCLOUD_SMOKE_ENVIRONMENT" \
+  || environment_absence_status=$?
+case "$environment_absence_status" in
+  0) ;;
+  1) fail "$HCLOUD_SMOKE_ENVIRONMENT must not exist because GitHub must not store cloud credentials" ;;
+  *) fail "$HCLOUD_SMOKE_ENVIRONMENT absence could not be verified" ;;
+esac
 
-printf 'PASS: exact GitHub release controls protect %s, preserve merge-commit integration, every v* tag, and the %s secret environment.\n' \
-  "$RELEASE_DEFAULT_BRANCH" "$HCLOUD_SMOKE_ENVIRONMENT"
+printf 'PASS: exact GitHub controls protect %s and every v* tag while cloud smoke and credentials remain local.\n' \
+  "$RELEASE_DEFAULT_BRANCH"

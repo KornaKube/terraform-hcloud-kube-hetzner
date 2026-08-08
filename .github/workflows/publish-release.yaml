@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 jobs:
   Release:
     name: Release
@@ -16,158 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 0  # Full history for contributor extraction
           persist-credentials: false
 
-      - name: Verify immutable release tree and bootstrap
+      - name: Extract reviewed changelog
         run: |
-          git fetch --no-tags origin master
-          scripts/check-release-ref-on-remote-default-branch.sh HEAD refs/remotes/origin/master
-          scripts/check-release-bootstrap-topology.sh --require-merge HEAD
-          scripts/tests/test_readme_release_bootstrap.sh --require-pinned
-
-      - name: Get previous tag
-        id: prev_tag
-        run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          echo "tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Extract changelog for this release
-        run: |
-          # Extract the [Unreleased] section from CHANGELOG.md
-          if [ -f CHANGELOG.md ]; then
-            # Get content between [Unreleased] and the next ## heading
-            awk '/^## \[Unreleased\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > changelog_section.md
-
-            if [ -s changelog_section.md ]; then
-              echo "Found changelog content:"
-              cat changelog_section.md
-            else
-              echo "No unreleased changelog content found"
-              : > changelog_section.md
-            fi
-          else
-            echo "No CHANGELOG.md found"
-            : > changelog_section.md
-          fi
-
-      - name: Generate contributors list
-        env:
-          PREV_TAG: ${{ steps.prev_tag.outputs.tag }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ -n "${PREV_TAG}" ]; then
-            RANGE="${PREV_TAG}..HEAD"
-          else
-            RANGE="HEAD"
-          fi
-
-          COMMITS=$(git log "${RANGE}" --format='%H')
-
-          # Pull request authors mapped from commits in range.
-          # This preserves attribution when changes were merged with squash.
-          PR_AUTHORS_FROM_COMMITS=$(
-            for sha in ${COMMITS}; do
-              gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/pulls" \
-                -H "Accept: application/vnd.github+json" \
-                --jq '.[].user.login' 2>/dev/null || true
-            done | sed '/^$/d' | sort -u
-          )
-
-          # Additional fallback: merged PR authors in the release date window.
-          # This helps preserve attribution even if a later integration PR is squashed.
-          if [ -n "${PREV_TAG}" ]; then
-            FROM_DATE=$(git log -1 --format='%cs' "${PREV_TAG}")
-          else
-            FROM_DATE=$(git log --reverse --format='%cs' | head -n1)
-          fi
-          TO_DATE=$(git log -1 --format='%cs' HEAD)
-
-          PR_AUTHORS_FROM_MERGED_PRS=$(
-            gh api --method GET --paginate /search/issues \
-              -f q="repo:${GITHUB_REPOSITORY} is:pr is:merged merged:${FROM_DATE}..${TO_DATE}" \
-              --jq '.items[].user.login' 2>/dev/null || true
-          )
-
-          PR_AUTHORS=$(
-            printf '%s\n%s\n' "${PR_AUTHORS_FROM_COMMITS}" "${PR_AUTHORS_FROM_MERGED_PRS}" \
-              | sed '/^$/d' \
-              | grep -E '^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$' \
-              | sort -u || true
-          )
-
-          # Resolve commit authors to GitHub @handles (one commits-API call per
-          # unique author email); fall back to the raw git name only when
-          # GitHub has no account for that email. Prevents the same person
-          # appearing as both @handle and legal name in the contributor list.
-          COMMIT_AUTHORS=$(
-            git log "${RANGE}" --format='%ae%x09%an%x09%H' \
-              | sort -u -t "$(printf '\t')" -k1,1 \
-              | while IFS="$(printf '\t')" read -r email name sha; do
-                  login=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq '.author.login // empty' 2>/dev/null || true)
-                  if [ -n "${login}" ]; then printf '@%s\n' "${login}"; else printf '%s\n' "${name}"; fi
-                done | sort -u
-          )
-          # Parse Co-authored-by via git's trailer parser: grepping raw bodies
-          # matches prose that merely mentions the trailer and emits garbage.
-          # GitHub noreply emails resolve to @handles without an API call.
-          COAUTHORS=$(
-            git log "${RANGE}" --format='%(trailers:key=Co-authored-by,valueonly=true)' \
-              | sed '/^$/d' | sort -u \
-              | while read -r entry; do
-                  email=$(printf '%s' "${entry}" | sed -n 's/.*<\([^>]*\)>.*/\1/p')
-                  login=$(printf '%s' "${email}" | sed -n 's/^[0-9]*+\{0,1\}\([A-Za-z0-9-]*\)@users\.noreply\.github\.com$/\1/p')
-                  if [ -n "${login}" ]; then printf '@%s\n' "${login}"; else printf '%s\n' "${entry}" | sed 's/ <[^>]*>$//'; fi
-                done | sed '/^$/d' | sort -u || true
-          )
-
-          ALL_CONTRIBUTORS=$(
-            {
-              printf '%s\n' "${PR_AUTHORS}" | sed 's/^/@/'
-              printf '%s\n' "${COMMIT_AUTHORS}"
-              printf '%s\n' "${COAUTHORS}"
-            } | sed '/^$/d' | awk '!seen[tolower($0)]++'
-          )
-
-          # Write to file for multi-line output
-          {
-            echo "## 👥 Contributors"
-            echo ""
-            echo "Thanks to all contributors who made this release possible:"
-            echo ""
-            echo "_Attribution includes pull request authors mapped from commits, so squashed PR implementers are credited._"
-            echo ""
-
-            if [ -n "${PR_AUTHORS}" ]; then
-              echo "### Pull Request Authors"
-              echo ""
-              printf '%s\n' "${PR_AUTHORS}" | sed '/^$/d' | sed 's/^/* @/'
-              echo ""
-            fi
-
-            echo "### Full Contributor List"
-            echo ""
-            if [ -n "${ALL_CONTRIBUTORS}" ]; then
-              printf '%s\n' "${ALL_CONTRIBUTORS}" | sed '/^$/d' | sed 's/^/* /'
-            else
-              echo "* No contributors found in this release range."
-            fi
-          } > contributors.md
-
-          echo "Generated contributors list:"
-          cat contributors.md
-
-      - name: Combine release notes
-        run: |
-          # Combine changelog + contributors into final release body
-          {
-            cat changelog_section.md
-            echo ""
-            cat contributors.md
-          } > release_body.md
-
-          echo "Final release body:"
-          cat release_body.md
+          set -euo pipefail
+          test -f CHANGELOG.md
+          test "$(grep -Ec '^## \[Unreleased\]$' CHANGELOG.md)" -eq 1
+          awk '/^## \[Unreleased\]$/{found=1; next} /^## \[/{exit} found' \
+            CHANGELOG.md > changelog_section.md
+          grep -Eq '[^[:space:]]' changelog_section.md
 
       - name: Create Release
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
@@ -175,4 +36,4 @@ jobs:
           generateReleaseNotes: true
           name: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          bodyFile: release_body.md
+          bodyFile: changelog_section.md

@@ -64,18 +64,105 @@ classify_release_bootstrap_readme() {
   esac
 }
 
+release_bootstrap_pins_at_ref() {
+  local ref="$1"
+
+  git show "${ref}:README.md" | sed -n '/^# BEGIN_KH_VERIFIED_BOOTSTRAP$/,/^# END_KH_VERIFIED_BOOTSTRAP$/p' \
+    | grep -E '^  kh_(commit|archive_sha256|manifest_sha256)="[^"]*"$'
+}
+
+release_bootstrap_pins_match_base() {
+  local base_ref="$1"
+  local base_pins current_pins
+
+  if ! git rev-parse --verify --quiet "${base_ref}^{commit}" >/dev/null; then
+    printf 'ERROR: release bootstrap base ref is not a commit: %s\n' "$base_ref" >&2
+    return 2
+  fi
+  if ! git merge-base --is-ancestor "$base_ref" HEAD; then
+    printf 'ERROR: release bootstrap base ref is not an ancestor of HEAD: %s\n' "$base_ref" >&2
+    return 2
+  fi
+  if ! base_pins="$(release_bootstrap_pins_at_ref "$base_ref")"; then
+    printf 'ERROR: README is unavailable at release bootstrap base ref: %s\n' "$base_ref" >&2
+    return 2
+  fi
+  current_pins="$(sed -n '/^# BEGIN_KH_VERIFIED_BOOTSTRAP$/,/^# END_KH_VERIFIED_BOOTSTRAP$/p' README.md \
+    | grep -E '^  kh_(commit|archive_sha256|manifest_sha256)="[^"]*"$')"
+
+  [[ "$current_pins" == "$base_pins" ]]
+}
+
+functional_bootstrap_pins_match_base() {
+  local base_ref="$1"
+  local base_pins functional_pins functional_ref
+
+  functional_ref="$(sed -n 's/^  kh_commit="\([^"]*\)"$/\1/p' README.md)"
+  if ! git rev-parse --verify --quiet "${functional_ref}^{commit}" >/dev/null; then
+    printf 'ERROR: pinned functional commit is unavailable: %s\n' "$functional_ref" >&2
+    return 2
+  fi
+  if ! base_pins="$(release_bootstrap_pins_at_ref "$base_ref")"; then
+    printf 'ERROR: base bootstrap pins are unavailable: %s\n' "$base_ref" >&2
+    return 2
+  fi
+  if ! functional_pins="$(release_bootstrap_pins_at_ref "$functional_ref")"; then
+    printf 'ERROR: functional bootstrap pins are unavailable: %s\n' "$functional_ref" >&2
+    return 2
+  fi
+
+  [[ "$functional_pins" == "$base_pins" ]]
+}
+
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0
 fi
 
 cd "$repo_root"
 state="$(classify_release_bootstrap_readme README.md)"
+base_ref="${KH_RELEASE_BASE_REF:-refs/remotes/origin/master}"
+base_match_status=0
+release_bootstrap_pins_match_base "$base_ref" || base_match_status=$?
 case "$state" in
   placeholders)
-    printf 'PASS: functional candidate retains all three exact release pin placeholders.\n'
+    case "$base_match_status" in
+      0)
+        printf 'PASS: placeholder bootstrap block is unchanged from trusted base %s.\n' "$base_ref"
+        ;;
+      1)
+        fail "a pinned bootstrap may not be reverted to placeholders; retain the previous release pins in functional commit A"
+        exit 1
+        ;;
+      *)
+        exit "$base_match_status"
+        ;;
+    esac
+    scripts/tests/test_readme_release_bootstrap.sh
     ;;
   pinned)
-    scripts/check-release-bootstrap-topology.sh HEAD
+    case "$base_match_status" in
+      0)
+        printf 'PASS: pinned bootstrap block is unchanged from trusted base %s.\n' "$base_ref"
+        ;;
+      1)
+        functional_match_status=0
+        functional_bootstrap_pins_match_base "$base_ref" || functional_match_status=$?
+        case "$functional_match_status" in
+          0) ;;
+          1)
+            fail "functional commit A must retain the trusted base bootstrap pins"
+            exit 1
+            ;;
+          *)
+            exit "$functional_match_status"
+            ;;
+        esac
+        scripts/check-release-bootstrap-topology.sh HEAD
+        ;;
+      *)
+        exit "$base_match_status"
+        ;;
+    esac
     scripts/tests/test_readme_release_bootstrap.sh --require-pinned
     ;;
   *)
