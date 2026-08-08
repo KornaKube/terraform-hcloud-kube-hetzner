@@ -223,7 +223,7 @@ git push -u origin fix/issue-<number>-<description>
 
 If the fix originates from a community member's work — a patch posted in the issue, a diff from their fork, or an abandoned/superseded PR — preserve their credit in git history so they appear in the repo contributors graph and GitHub-generated release notes:
 
-- If their work exists as commits (fork branch, closed PR): `git cherry-pick` those commits FIRST (keeps them as `Author:`), then add your changes as separate commits on top. Never squash their authorship away (see the `review-pr` skill for merge-method rules).
+- If their work exists as commits (fork branch, closed PR): `git cherry-pick` those commits FIRST (keeps them as `Author:`), then add your changes as separate commits on top. Never squash their authorship away (see the `review-pr` skill for merge-method rules). Cherry-picking preserves contributor credit but does not make the original PR appear merged, so describe that disposition honestly.
 - If their work was only a snippet/diff/instructions in the issue thread: add a `Co-authored-by: Name <email>` trailer to your commit (use their GitHub noreply email `<id>+<login>@users.noreply.github.com` if no public email), and credit their handle in the commit body and changelog entry.
 - GitHub matches `Co-authored-by` by EXACT email. Never guess the numeric id — fetch it first: `gh api users/<login> --jq .id`. A wrong id silently drops the credit.
 - Trailers are only parsed from the commit message's FINAL paragraph block. Keep `Co-authored-by:` and any other trailers (e.g. `Claude-Session:`) together in one last block with no blank line between them — a trailer in an earlier paragraph is silently ignored by git and GitHub. Verify with: `git log -1 --format='%(trailers:key=Co-authored-by,valueonly=true)'`.
@@ -265,10 +265,12 @@ Before completing ANY issue:
 2. Request review if needed
 3. Close issue with explanation when merged
 
-## Community Communication (always)
+## Community Communication
 
-Every issue and PR interaction gets a kind, human reply — reporters and
-contributors are volunteers giving the project their time.
+Human reporters and contributors get kind, specific replies — they are
+volunteers giving the project their time. Keep internal reviews and candidate
+status in the evidence ledger; default to one final disposition message per
+issue or PR instead of posting near-duplicate progress and completion notes.
 
 - **On the issue when a fix lands**: thank the reporter by handle, acknowledge
   the quality of their report (many kube-hetzner reports include excellent
@@ -277,9 +279,14 @@ contributors are volunteers giving the project their time.
 - **On community PRs**: thank the contributor by handle. If we merged their
   work via the integrate-and-fix flow, say what we adjusted on top and why —
   the delta is a gift, not a critique — and confirm their commit authorship is
-  preserved so they appear in the release credit.
+  preserved so they appear in the release credit. Say "merged" only after the
+  original PR has a non-null `mergedAt`; partial adoption must be described
+  honestly as incorporated or credited.
 - **When the report is a user error**: still thank them, show the corrected
   configuration, and never make them feel foolish — config mistakes usually
   mean our docs have a gap; consider fixing the doc too.
+- **On routine bot PRs**: merge or close without social comments. Leave one
+  concise technical note only when a non-obvious decision must be recorded for
+  human maintainers.
 - Plain warm language. No corporate boilerplate. One paragraph is usually
   enough.
