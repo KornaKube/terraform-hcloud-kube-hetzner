@@ -92,7 +92,7 @@ variable "enabled_architectures" {
 }
 
 variable "microos_x86_snapshot_id" {
-  description = "MicroOS x86 snapshot ID to be used. If empty, the most recent image created will be used."
+  description = "MicroOS x86 snapshot ID to use. If empty, selects the newest available snapshot matching kubernetes_distribution, then falls back to the newest legacy snapshot without a distro label."
   type        = string
   default     = ""
 
@@ -103,7 +103,7 @@ variable "microos_x86_snapshot_id" {
 }
 
 variable "microos_arm_snapshot_id" {
-  description = "MicroOS ARM snapshot ID to be used. If empty, the most recent image created will be used."
+  description = "MicroOS ARM snapshot ID to use. If empty, selects the newest available snapshot matching kubernetes_distribution, then falls back to the newest legacy snapshot without a distro label."
   type        = string
   default     = ""
 
@@ -2250,7 +2250,7 @@ variable "enable_metrics_server" {
 variable "k3s_channel" {
   type        = string
   default     = "stable" # Please update kube.tf.example too when changing this variable
-  description = "Allows you to specify an initial k3s channel. Use stable, latest, or testing for live channel installs; v1.33 is accepted for explicit v2 upgrade preservation; use k3s_version for exact Kubernetes minor pinning. See https://update.k3s.io/v1-release/channels for available channels."
+  description = "Selects the k3s channel. Initial bootstrap uses the exact channel release reviewed with this module version; System Upgrade Controller plans can continue following the live channel. v1.33 is accepted for explicit v2 upgrade preservation; use k3s_version for exact pinning."
 
   validation {
     condition     = contains(["stable", "latest", "testing", "v1.16", "v1.17", "v1.18", "v1.19", "v1.20", "v1.21", "v1.22", "v1.23", "v1.24", "v1.25", "v1.26", "v1.27", "v1.28", "v1.29", "v1.30", "v1.31", "v1.32", "v1.33", "v1.34", "v1.35"], var.k3s_channel)
@@ -2270,10 +2270,26 @@ variable "k3s_version" {
   }
 }
 
+variable "k3s_artifact_sha256" {
+  type        = map(string)
+  default     = {}
+  description = "Optional independently reviewed SHA-256 digests for an exact k3s_version not included in this module's release manifest. Include each architecture you want independently pinned. Missing architectures preserve existing custom-version behavior by using the exact official release checksum publication. Built-in reviewed versions ignore this override."
+
+  validation {
+    condition = alltrue([
+      for architecture, digest in var.k3s_artifact_sha256 :
+      contains(["amd64", "arm64"], architecture) &&
+      can(regex("^[0-9a-f]{64}$", digest)) &&
+      digest != "0000000000000000000000000000000000000000000000000000000000000000"
+    ])
+    error_message = "k3s_artifact_sha256 keys must be amd64 or arm64 and values must be non-zero lowercase 64-character SHA-256 digests."
+  }
+}
+
 variable "rke2_channel" {
   type        = string
   default     = "v1.32" # Please update kube.tf.example too when changing this variable
-  description = "Allows you to specify an initial rke2 channel. Use stable, latest, or testing when rke2_version is empty; use rke2_version for exact Kubernetes minor pinning. See https://update.rke2.io/v1-release/channels for available channels."
+  description = "Selects the RKE2 channel when rke2_version is empty. Initial bootstrap uses the exact channel release reviewed with this module version; System Upgrade Controller plans can continue following the live channel. Use rke2_version for exact pinning."
 
   validation {
     condition     = contains(["stable", "latest", "testing", "v1.18", "v1.19", "v1.20", "v1.21", "v1.22", "v1.23", "v1.24", "v1.25", "v1.26", "v1.27", "v1.28", "v1.29", "v1.30", "v1.31", "v1.32", "v1.33", "v1.34", "v1.35"], var.rke2_channel)
@@ -2290,6 +2306,22 @@ variable "rke2_version" {
   validation {
     condition     = var.rke2_version == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?\\+rke2r[0-9]+$", var.rke2_version))
     error_message = "rke2_version must be empty or a single release tag like v1.32.5+rke2r1."
+  }
+}
+
+variable "rke2_artifact_sha256" {
+  type        = map(string)
+  default     = {}
+  description = "Optional independently reviewed SHA-256 digests for an exact rke2_version not included in this module's release manifest. Include each architecture you want independently pinned. Missing architectures preserve existing custom-version behavior by using the exact official release checksum publication. Built-in reviewed versions ignore this override."
+
+  validation {
+    condition = alltrue([
+      for architecture, digest in var.rke2_artifact_sha256 :
+      contains(["amd64", "arm64"], architecture) &&
+      can(regex("^[0-9a-f]{64}$", digest)) &&
+      digest != "0000000000000000000000000000000000000000000000000000000000000000"
+    ])
+    error_message = "rke2_artifact_sha256 keys must be amd64 or arm64 and values must be non-zero lowercase 64-character SHA-256 digests."
   }
 }
 

@@ -322,6 +322,76 @@ def assert_opensuse_ssh_cloudinit_contract() -> None:
     )
 
 
+def assert_baked_selinux_package_contract() -> None:
+    """Keep distro installers from fetching SELinux RPMs during node bootstrap."""
+
+    locals_source = normalize_hcl(LOCALS_TF.read_text(encoding="utf-8"))
+    installer_source = normalize_hcl(
+        (REPO_ROOT / "scripts/install-verified-kubernetes.sh").read_text(encoding="utf-8")
+    )
+    required_fragments = (
+        "INSTALL_K3S_SKIP_SELINUX_RPM=true",
+        "INSTALL_RKE2_METHOD=tar",
+        "var.enable_selinux?local.require_k3s_selinux:[]",
+        "var.enable_selinux?local.require_rke2_selinux:[]",
+        "rpm-qk3s-selinux",
+        "rpm-qrke2-selinux",
+        "-s/usr/share/selinux/packages/k3s.pp",
+        "-s/usr/share/selinux/packages/rke2.pp",
+    )
+    install_sources = locals_source + installer_source
+    missing = [fragment for fragment in required_fragments if fragment not in install_sources]
+    if missing:
+        fail("baked SELinux package contract", f"missing fragments: {missing!r}")
+    print_pass(
+        "baked SELinux package contract",
+        "k3s and RKE2 require the image-baked policy package and disable runtime SELinux RPM installation",
+    )
+
+
+def assert_kubernetes_artifact_architecture_contract() -> None:
+    """Exclude dormant autoscaler pools from required payload digest architectures."""
+
+    locals_source = normalize_hcl(LOCALS_TF.read_text(encoding="utf-8"))
+    installer_source = normalize_hcl(
+        (REPO_ROOT / "scripts/install-verified-kubernetes.sh").read_text(encoding="utf-8")
+    )
+    robot_source = normalize_hcl((REPO_ROOT / "robot-nodes.tf").read_text(encoding="utf-8"))
+    active_autoscaler_fragment = (
+        '[fornodepoolinvar.autoscaler_nodepools:'
+        'substr(nodepool.server_type,0,3)=="cax"?"arm64":"amd64"'
+        'ifnodepool.max_nodes>0]'
+    )
+    if active_autoscaler_fragment not in locals_source:
+        fail(
+            "Kubernetes artifact architecture contract",
+            "autoscaler digest architectures must be derived only from pools with max_nodes > 0",
+        )
+    required_installer_fragments = (
+        "resolve_release_payload_sha256(){",
+        "usingitsexactofficialreleasechecksumpublication",
+    )
+    missing = [
+        fragment
+        for fragment in required_installer_fragments
+        if fragment not in installer_source
+    ]
+    if missing:
+        fail(
+            "Kubernetes artifact architecture contract",
+            f"custom exact versions must preserve the official-checksum compatibility path; missing {missing!r}",
+        )
+    if "install_sha=" in robot_source:
+        fail(
+            "Kubernetes artifact architecture contract",
+            "installer implementation changes must not reprovision existing Robot nodes",
+        )
+    print_pass(
+        "Kubernetes artifact architecture contract",
+        "dormant pools add no digest requirement, custom exact versions retain official-checksum compatibility, and Robot nodes are not replayed",
+    )
+
+
 def base_render_vars() -> dict[str, Any]:
     var_values = {
         "audit_log_path": "/var/log/kubernetes/audit.log",
@@ -680,6 +750,211 @@ exec /usr/bin/sed "$@"
         print_pass(
             "autoscaler overlay retry simulation",
             "transient route failures retry, config is written, and strict mode does not leak",
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def run_post_install_readiness_deployment_retry_simulation(script: str) -> None:
+    temp_dir = Path(tempfile.mkdtemp(prefix="kh-render-readiness-retry-"))
+    try:
+        fake_bin = temp_dir / "bin"
+        state_dir = temp_dir / "state"
+        fake_bin.mkdir()
+        state_dir.mkdir()
+
+        (fake_bin / "kubectl").write_text(
+            """#!/bin/sh
+set -eu
+state="${KH_FAKE_KUBECTL_STATE:?}"
+case "$*" in
+  "--request-timeout=30s get ns cert-manager")
+    exit 0
+    ;;
+  "--request-timeout=30s -n cert-manager get deployment/cert-manager-cainjector")
+    exit 0
+    ;;
+  "--request-timeout=30s -n cert-manager wait --for=condition=Available --timeout=30s deployment/cert-manager-cainjector")
+    file="$state/wait-count"
+    count=$(cat "$file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "$count" > "$file"
+    if [ "$count" -eq 1 ]; then
+      echo 'Error from server (NotFound): deployments.apps "cert-manager-cainjector" not found' >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  *)
+    echo "unexpected kubectl invocation: $*" >&2
+    exit 1
+    ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        (fake_bin / "date").write_text("#!/bin/sh\necho 100\n", encoding="utf-8")
+        (fake_bin / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        for path in fake_bin.iterdir():
+            path.chmod(0o755)
+
+        simulation_script = script.replace('__KUBECTL__', 'kubectl')
+        simulation_script += "\nwait_deployment cert-manager cert-manager-cainjector 30\n"
+        env = os.environ.copy()
+        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+        env["KH_FAKE_KUBECTL_STATE"] = str(state_dir)
+        result = subprocess.run(
+            ["bash", "-e"],
+            input=simulation_script,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        if result.returncode != 0:
+            fail(
+                "post-install readiness deployment retry simulation",
+                strip_ansi((result.stdout + "\n" + result.stderr).strip()) or "simulation failed",
+            )
+        wait_count = (state_dir / "wait-count").read_text(encoding="utf-8").strip()
+        if wait_count != "2":
+            fail(
+                "post-install readiness deployment retry simulation",
+                f"expected two availability waits after transient NotFound, got {wait_count!r}",
+            )
+        print_pass(
+            "post-install readiness deployment retry simulation",
+            "a deployment replaced between get and wait is retried against the fixed deadline",
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def run_post_install_readiness_deadline_simulation(script: str) -> None:
+    temp_dir = Path(tempfile.mkdtemp(prefix="kh-render-readiness-deadline-"))
+    try:
+        fake_bin = temp_dir / "bin"
+        fake_bin.mkdir()
+
+        (fake_bin / "date").write_text(
+            """#!/bin/sh
+set -eu
+state="${KH_FAKE_DATE_STATE:?}"
+count=$(cat "$state" 2>/dev/null || echo 0)
+count=$((count + 1))
+echo "$count" > "$state"
+case "${KH_FAKE_DATE_MODE:?}:$count" in
+  request:1|request:2|request:3) echo 100 ;;
+  request:4) echo 110 ;;
+  request:*) echo 120 ;;
+  sleep:1|sleep:2|sleep:3) echo 100 ;;
+  sleep:4) echo 103 ;;
+  sleep:*) echo 105 ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        (fake_bin / "kubectl").write_text(
+            """#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "${KH_FAKE_KUBECTL_LOG:?}"
+case "${KH_FAKE_DATE_MODE:?}:$*" in
+  "request:--request-timeout=30s get ns cert-manager"|\
+  "request:--request-timeout=20s -n cert-manager get deployment/cert-manager-cainjector"|\
+  "request:--request-timeout=10s -n cert-manager wait --for=condition=Available --timeout=10s deployment/cert-manager-cainjector")
+    exit 0
+    ;;
+  "sleep:--request-timeout=5s get ns cert-manager")
+    exit 1
+    ;;
+  *)
+    echo "unexpected kubectl invocation: $*" >&2
+    exit 97
+    ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        (fake_bin / "sleep").write_text(
+            "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$1\" >> \"${KH_FAKE_SLEEP_LOG:?}\"\n",
+            encoding="utf-8",
+        )
+        for path in fake_bin.iterdir():
+            path.chmod(0o755)
+
+        simulation_script = script.replace("__KUBECTL__", "kubectl")
+        env = os.environ.copy()
+        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+
+        request_state = temp_dir / "request-date-state"
+        request_log = temp_dir / "request-kubectl.log"
+        request_sleep_log = temp_dir / "request-sleep.log"
+        request_sleep_log.touch()
+        request_env = env | {
+            "KH_FAKE_DATE_MODE": "request",
+            "KH_FAKE_DATE_STATE": str(request_state),
+            "KH_FAKE_KUBECTL_LOG": str(request_log),
+            "KH_FAKE_SLEEP_LOG": str(request_sleep_log),
+        }
+        request_result = subprocess.run(
+            ["bash", "-e"],
+            input=simulation_script + "\nwait_deployment cert-manager cert-manager-cainjector 30\n",
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=request_env,
+        )
+        if request_result.returncode != 0:
+            fail(
+                "post-install readiness absolute request deadline simulation",
+                strip_ansi((request_result.stdout + "\n" + request_result.stderr).strip()) or "simulation failed",
+            )
+        expected_requests = (
+            "--request-timeout=30s get ns cert-manager\n"
+            "--request-timeout=20s -n cert-manager get deployment/cert-manager-cainjector\n"
+            "--request-timeout=10s -n cert-manager wait --for=condition=Available --timeout=10s deployment/cert-manager-cainjector\n"
+        )
+        if request_log.read_text(encoding="utf-8") != expected_requests:
+            fail(
+                "post-install readiness absolute request deadline simulation",
+                f"request timeouts did not shrink against one deadline: {request_log.read_text(encoding='utf-8')!r}",
+            )
+        if request_sleep_log.read_text(encoding="utf-8"):
+            fail("post-install readiness absolute request deadline simulation", "successful wait unexpectedly slept")
+
+        sleep_state = temp_dir / "sleep-date-state"
+        sleep_log = temp_dir / "sleep.log"
+        kubectl_log = temp_dir / "sleep-kubectl.log"
+        sleep_env = env | {
+            "KH_FAKE_DATE_MODE": "sleep",
+            "KH_FAKE_DATE_STATE": str(sleep_state),
+            "KH_FAKE_KUBECTL_LOG": str(kubectl_log),
+            "KH_FAKE_SLEEP_LOG": str(sleep_log),
+        }
+        sleep_result = subprocess.run(
+            ["bash", "-e"],
+            input=(
+                simulation_script
+                + "\nif wait_deployment cert-manager cert-manager-cainjector 5; then exit 98; fi\n"
+            ),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=sleep_env,
+        )
+        if sleep_result.returncode != 0:
+            fail(
+                "post-install readiness absolute sleep deadline simulation",
+                strip_ansi((sleep_result.stdout + "\n" + sleep_result.stderr).strip()) or "simulation failed",
+            )
+        if sleep_log.read_text(encoding="utf-8") != "2\n":
+            fail(
+                "post-install readiness absolute sleep deadline simulation",
+                f"retry sleep was not capped to the remaining budget: {sleep_log.read_text(encoding='utf-8')!r}",
+            )
+        print_pass(
+            "post-install readiness absolute deadline simulation",
+            "each API call and retry sleep is capped to the remaining fixed deadline",
         )
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1443,8 +1718,18 @@ def main() -> int:
         assert_addon_default_versions()
         assert_agent_private_ipv4_contract(scratch)
         assert_opensuse_ssh_cloudinit_contract()
+        assert_baked_selinux_package_contract()
+        assert_kubernetes_artifact_architecture_contract()
         run_helm_checks(scratch)
         run_shell_checks(scratch)
+        post_install_readiness_script = scratch.render_string(
+            scratch.write_template(
+                "post_install_readiness_retry",
+                extract_heredoc("post_install_readiness_wait_script"),
+            )
+        )
+        run_post_install_readiness_deployment_retry_simulation(post_install_readiness_script)
+        run_post_install_readiness_deadline_simulation(post_install_readiness_script)
         run_cloudinit_checks(scratch)
         run_node_annotation_cloudinit_checks(scratch)
         run_autoscaler_standard_node_ip_checks()

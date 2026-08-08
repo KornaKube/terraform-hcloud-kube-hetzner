@@ -115,8 +115,8 @@ output "cluster_token" {
 }
 
 output "join_script_external" {
-  description = "Helper command for joining non-managed external nodes to k3s with external-IP and wireguard-native flannel."
-  value       = local.kubernetes_distribution == "k3s" ? "curl -sfL https://get.k3s.io | K3S_URL='${local.k3s_endpoint}' K3S_TOKEN='${local.cluster_token}' sh -s - agent --node-external-ip=<PUBLIC_NODE_IP> --flannel-backend=wireguard-native" : "External join helper is available only for k3s clusters."
+  description = "Verified helper command for joining and starting non-managed external k3s agents with external-IP and wireguard-native flannel. Replace <PUBLIC_NODE_IP> before running it as root; SELinux hosts must have k3s-selinux installed."
+  value       = local.kubernetes_distribution == "k3s" ? local.k3s_install_external_agent_command : "External join helper is available only for k3s clusters."
   sensitive   = true
 }
 

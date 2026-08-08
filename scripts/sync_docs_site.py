@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 from pathlib import Path
 
@@ -19,6 +20,26 @@ def _extract_section(markdown: str, heading: str) -> str:
     )
     match = pattern.search(markdown)
     return match.group(0).strip() if match else ""
+
+
+def _site_quick_start(markdown: str, release_tag: str) -> str:
+    bootstrap = re.compile(
+        r"```sh\n# BEGIN_KH_VERIFIED_BOOTSTRAP\n[\s\S]*?"
+        r"\n# END_KH_VERIFIED_BOOTSTRAP\n```"
+    )
+    release_readme = (
+        "https://github.com/mysticaltech/terraform-hcloud-kube-hetzner/"
+        f"blob/{release_tag}/README.md#quick-start"
+    )
+    replacement = (
+        "> The setup bootstrap is cryptographically pinned per release. Run it "
+        f"from the [{release_tag} release README]({release_readme}); a moving "
+        "documentation site cannot safely reproduce release-specific pins."
+    )
+    rendered, count = bootstrap.subn(replacement, markdown)
+    if count != 1:
+        raise ValueError("README must contain exactly one verified bootstrap block")
+    return rendered
 
 
 def _extract_intro(markdown: str) -> str:
@@ -214,14 +235,17 @@ def _extract_configuration_keys(example: str) -> list[str]:
     return keys
 
 
-def generate() -> None:
-    SITE_DOCS.mkdir(parents=True, exist_ok=True)
-
+def render() -> dict[Path, str]:
     readme = README.read_text(encoding="utf-8")
     kube_example = KUBE_EXAMPLE.read_text(encoding="utf-8")
 
+    release_match = re.search(r"/releases/tag/(v[0-9]+[.][0-9]+[.][0-9]+)", readme)
+    if not release_match:
+        raise ValueError("README does not identify the current release tag")
+    release_tag = release_match.group(1)
+
     intro = _extract_intro(readme)
-    quick_start = _extract_section(readme, "Quick Start")
+    quick_start = _site_quick_start(_extract_section(readme, "Quick Start"), release_tag)
     architecture = _extract_section(readme, "Architecture")
 
     index_content = "\n\n".join(
@@ -243,9 +267,39 @@ def generate() -> None:
         f"{rows}\n"
     )
 
-    (SITE_DOCS / "index.md").write_text(index_content, encoding="utf-8")
-    (SITE_DOCS / "configuration.md").write_text(config_content, encoding="utf-8")
+    return {
+        SITE_DOCS / "index.md": index_content,
+        SITE_DOCS / "configuration.md": config_content,
+    }
+
+
+def generate(*, check: bool = False) -> int:
+    rendered = render()
+    if check:
+        stale = [
+            path.relative_to(ROOT)
+            for path, expected in rendered.items()
+            if not path.is_file() or path.read_text(encoding="utf-8") != expected
+        ]
+        if stale:
+            print("Generated site documentation is stale:")
+            for path in stale:
+                print(f"- {path}")
+            return 1
+        return 0
+
+    SITE_DOCS.mkdir(parents=True, exist_ok=True)
+    for path, content in rendered.items():
+        path.write_text(content, encoding="utf-8")
+    return 0
 
 
 if __name__ == "__main__":
-    generate()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail instead of writing when checked-in generated docs are stale",
+    )
+    args = parser.parse_args()
+    raise SystemExit(generate(check=args.check))

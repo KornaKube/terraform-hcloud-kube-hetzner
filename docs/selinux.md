@@ -6,6 +6,13 @@ so SELinux is another defense-in-depth boundary around host files, host
 processes, capabilities, type transitions, and container access to labeled
 paths.
 
+The project Packer templates install exactly one matching Rancher policy RPM
+(`k3s-selinux` or `rke2-selinux`) inside a committed transactional snapshot,
+reboot, and verify the package, policy module, and enforcing state before image
+capture. Build both distro variants for each architecture. New MicroOS images
+carry `kube-hetzner/k8s-distro`; automatic lookup prefers the matching label
+and uses only older unlabeled MicroOS images as a compatibility fallback.
+
 The shipped policy is not a generic "allow containers everything" profile. It
 relaxes specific denials that were hit by real kube-hetzner workloads over the
 v2 lifetime, plus a small v3 Leap Micro policy for metrics, exporters, port

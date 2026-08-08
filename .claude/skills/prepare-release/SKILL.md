@@ -39,7 +39,7 @@ Maintainer-authorized release job:
 The repository has tag-driven release automation in `.github/workflows/publish-release.yaml`.
 
 Important details:
-- The workflow runs on any pushed tag.
+- The workflow runs only on pushed `v*` tags and has no manual-dispatch path.
 - It extracts the Markdown release content from `CHANGELOG.md`, specifically everything under `## [Unreleased]` until the next `## [` heading.
 - It appends the generated contributor list and GitHub's generated release notes.
 - It creates the GitHub release with `ncipollo/release-action`.
@@ -49,8 +49,8 @@ Therefore:
 - Keep the target release notes under `## [Unreleased]` until after the release tag is pushed.
 - Do not move `[Unreleased]` to `[vX.Y.Z] - YYYY-MM-DD` before tagging unless you are also bypassing the workflow and manually providing release notes.
 - Do not run `gh release create` during the normal path; the tag workflow owns release creation. Use `gh release create` only as a recovery path if the workflow fails.
-- If Karim asks for a tiny release-prep correction during release, commit and push it directly to `master`, then tag the resulting commit.
-- After a successful release, cut `CHANGELOG.md`: reset `## [Unreleased]` to an empty placeholder and move the released notes under `## [X.Y.Z] - YYYY-MM-DD`. Commit and push that cleanup directly to `master`.
+- If Karim asks for a tiny release-prep correction during release, commit it on the release branch, merge it through the protected `master` pull-request path, then tag the resulting merged commit.
+- After a successful release, cut `CHANGELOG.md`: reset `## [Unreleased]` to an empty placeholder and move the released notes under `## [X.Y.Z] - YYYY-MM-DD`. Merge that cleanup through a release-maintenance pull request.
 - Previous release notes must never remain under `## [Unreleased]`; otherwise the next tag workflow will publish stale notes again.
 - For v3-series releases, verify README's "What's New in v3" link still points
   at the current release tag URL and the section matches the live release body.
@@ -195,7 +195,7 @@ codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
 Update README.md badges if version references changed:
 
 ```markdown
-[![K3s](https://img.shields.io/badge/K3s-v1.35-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)
+[![K3s](https://img.shields.io/badge/K3s-v1.36-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)
 ```
 
 Check `versions.tf` for:
@@ -233,7 +233,7 @@ Before tagging a v3 release, run the local readiness gates:
 
 ```bash
 terraform fmt -recursive
-terraform-docs markdown . > docs/terraform.md
+terraform-docs markdown table --config .terraform-docs.yml --output-mode inject --output-file docs/terraform.md .
 terraform init -backend=false -input=false
 terraform validate -no-color
 tmpdir="$(mktemp -d)"
@@ -243,7 +243,45 @@ rm -rf "$tmpdir"
 uv run scripts/validate_tailscale_large_scale_examples.py
 uv run scripts/validate_v3_final_polish_examples.py
 uv run scripts/smoke_v3_plan_matrix.py
+scripts/tests/test_github_release_controls_contract.sh
+scripts/check-github-release-controls.sh
+scripts/tests/test_release_bootstrap_topology.sh
+scripts/check-release-bootstrap-topology.sh HEAD
+scripts/tests/test_readme_release_bootstrap.sh --require-pinned
 ```
+
+The GitHub control check is a live, authenticated pre-release gate. It verifies
+that the default branch requires pull requests and blocks force-push/deletion,
+the `hcloud-smoke` environment is restricted to the default branch with a
+required maintainer review and no admin bypass, and `v*` tags have an active
+creation/update/deletion/non-fast-forward ruleset. A repository fixture cannot
+substitute for these live settings.
+
+The README bootstrap uses a two-commit release invariant to avoid a circular
+archive hash:
+
+1. Freeze and push functional commit `A`, with the README pin placeholders
+   still present. No runtime, Packer, verifier, installer, workflow, or
+   cloud-init byte may change after this point without restarting the process.
+2. Download the canonical Codeload archive for full commit `A` over strict
+   HTTPS and calculate its SHA-256 independently. Calculate the SHA-256 of
+   `packer-template/security-bundle.sha256` from commit `A` as well.
+3. In release-preparation commit `B`, replace only the README bootstrap
+   placeholders with commit `A`, the archive digest, and the manifest digest.
+4. Run `scripts/check-release-bootstrap-topology.sh HEAD` and
+   `scripts/tests/test_readme_release_bootstrap.sh --require-pinned`. The first
+   gate proves `A` is an ancestor, the release tree differs from `A` only in
+   `README.md`, only the three pin assignments changed there, and the manifest
+   pin matches `A`. The second downloads the real archive, verifies both pins,
+   rejects tampered fixtures, overrides inherited source selection, and
+   generates a clean temporary project from the extracted entrypoint.
+5. Merge both commits through the protected release pull request using GitHub's
+   **merge-commit** method. Squash and rebase merges destroy the reviewed A/B
+   graph and are forbidden for this PR. The merge tree must equal `B`, and the
+   other merge parent must already be ancestral to `A`. The tag workflow
+   repeats both gates before publication. Record post-`A` evidence in the
+   release PR or external run logs; any repository edit beyond the three README
+   pins requires a new `A`, new pins, and repeated exact-tree gates.
 
 Cross-variable and local-dependent module contract failures are hard
 `terraform_data.validation_contract` preconditions, so invalid-combination
@@ -254,7 +292,9 @@ Also verify `README.md`, `kube.tf.example`, `docs/llms.md`, and `.claude/skills/
 
 For v3 releases, verify README's "What's New in v3" release-tag URL points to
 the current tag and does not keep stale pre-release wording after the GitHub
-release exists.
+release exists. Regenerate `site-docs` and run
+`scripts/tests/test_generated_site_contract.sh`; the moving site must route to
+that release-tagged README instead of copying release-specific bootstrap pins.
 
 For v3, additionally verify the Tailscale node-transport surfaces stay aligned:
 `node_transport_mode = "tailscale"` is the supported secure single-network and
@@ -345,10 +385,13 @@ chore: prepare release vX.Y.Z
 - Update release notes and version references
 EOF
 )"
-git push origin master
+git push origin HEAD
+gh pr create --base master --head "$(git branch --show-current)" --fill
 ```
 
-For release-only cleanup after Karim explicitly says release, commit directly to `master`; do not create a release-prep PR unless he asks for one.
+Release preparation and post-release cleanup always use pull requests because
+`master` protection applies to administrators. Never bypass or temporarily
+weaken that protection for a release.
 
 ## Execute Release (Only When Karim Explicitly Authorizes)
 
@@ -357,16 +400,33 @@ VERSION=vX.Y.Z
 REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 
 git checkout master
-git pull origin master
-git status --short
+git fetch --no-tags origin master
+git merge --ff-only refs/remotes/origin/master
+test -z "$(git status --porcelain)"
+RELEASE_COMMIT=$(git rev-parse HEAD)
 
 # Refuse to continue if either command prints the tag.
 git tag --list "$VERSION"
 git ls-remote --tags origin "refs/tags/$VERSION"
 
-# Create and push the tag. The GitHub Actions release workflow creates the release.
-git tag -a "$VERSION" -m "Release $VERSION"
-git push origin "$VERSION"
+# Run the slow immutable-tree gates before the final live authority checks.
+scripts/check-release-bootstrap-topology.sh --require-merge HEAD
+scripts/tests/test_readme_release_bootstrap.sh --require-pinned
+
+# Immediately before tagging, re-prove live controls and refresh the authoritative
+# branch. The atomic push lease prevents the tag from publishing if master moves
+# after this fetch.
+test -z "$(git status --porcelain)"
+scripts/check-github-release-controls.sh
+git fetch --no-tags origin master
+scripts/check-release-ref-on-remote-default-branch.sh --require-tip "$RELEASE_COMMIT" refs/remotes/origin/master
+test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+
+# Create and atomically push the tag with the unchanged protected-master tip.
+# If this push fails, no remote tag is created; delete the local tag before retrying.
+git tag -a "$VERSION" "$RELEASE_COMMIT" -m "Release $VERSION"
+git push --atomic --force-with-lease="refs/heads/master:$RELEASE_COMMIT" origin \
+  "${RELEASE_COMMIT}:refs/heads/master" "refs/tags/$VERSION"
 
 # Monitor automation and confirm the release exists.
 gh run list --repo "$REPO" --workflow "Publish a new Github Release" --limit 1
@@ -410,7 +470,8 @@ _No unreleased changes._
 ...released notes...
 ```
 
-Commit and push the changelog cut directly to `master`.
+Create a release-maintenance branch for the changelog cut, push it, and merge
+it through a pull request with the same protected-`master` review flow.
 
 ## Version Reference Locations
 
@@ -435,6 +496,7 @@ Files that may need version updates:
 - [ ] Version badges updated (if needed)
 - [ ] `docs/terraform.md` regenerated
 - [ ] README "What's New in v3" release-tag URL is accurate/current for v3-series releases
+- [ ] Generated site routes setup to that release-tagged README and contains no raw/moving setup bootstrap or unresolved pins
 - [ ] Knowledge file (`kube-hetzner-knowledge.jsondata`) regenerated when applicable and `meta.version` matches the release
 - [ ] Project skills checked for stale v2 names
 - [ ] Tailscale node-transport README/example/skill guidance matches variables.tf
@@ -443,6 +505,10 @@ Files that may need version updates:
 - [ ] `uv run scripts/validate_v3_final_polish_examples.py` passed
 - [ ] `uv run scripts/smoke_v3_plan_matrix.py` passed for Gateway API, registry mirror, public join endpoint guards, k3s/RKE2 Tailscale multinetwork constraints, and single-Gateway-controller validation
 - [ ] Terraform and OpenTofu validation passed
+- [ ] README bootstrap pins the frozen functional commit, archive digest, and Packer manifest digest
+- [ ] `scripts/check-release-bootstrap-topology.sh HEAD` proves the release tree is functional commit A plus only the three README pins
+- [ ] `scripts/tests/test_readme_release_bootstrap.sh --require-pinned` passed against the real Codeload archive
+- [ ] Adversarial and live GitHub release-control gates passed
 - [ ] Every release-blocking CI job has a completed successful run, not merely no visible failures
 - [ ] Release notes drafted
 - [ ] Changes committed and pushed

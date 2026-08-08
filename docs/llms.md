@@ -1537,11 +1537,18 @@ Excellent! Let's continue our meticulous dissection.
   * **Purpose:** Allows you to specify an exact k3s version to install on all nodes.
   * **Format:** Should match a k3s release tag from their GitHub releases (e.g., `"v1.30.2+k3s2"`). The `+k3sX` suffix indicates a k3s-specific build/patch of that Kubernetes version.
   * **Precedence:** If both `k3s_version` and `k3s_channel` are set, `k3s_version` takes precedence for the *initial* installation.
-  * **Upgrades:** If `automatically_upgrade_kubernetes = true`, the System Upgrade Controller uses the exact `k3s_version` when it is set. Leave `k3s_version` empty only when you intentionally want a live channel such as `stable`, `latest`, or `testing`.
+  * **Upgrades:** If `automatically_upgrade_kubernetes = true`, the System Upgrade Controller uses the exact `k3s_version` when it is set. Leave `k3s_version` empty only when you intentionally want a channel such as `stable`, `latest`, or `testing`.
   * **Benefit:** Guarantees a specific k3s version is installed, useful for consistency, testing, Rancher compatibility, or avoiding deployment-time failures from upstream channel resolution.
 
+* **`k3s_artifact_sha256` (Map of Strings, Optional):**
+  * **Default:** `{}`.
+  * **Purpose:** Supplies independently reviewed `amd64` and/or `arm64` SHA-256 pins for an exact `k3s_version` not present in the module's reviewed release manifest.
+  * **Compatibility:** Missing architectures preserve existing custom-version behavior by selecting one exact asset digest from that exact official release's checksum publication. Dormant autoscaler pools add no requirement. Known reviewed versions always use the module's built-in digest and ignore overrides.
+  * **Security boundary:** Bootstrap verifies the payload before root installs it. A configured digest is independent of the runtime release download; the compatibility fallback verifies release consistency but shares the release authority's trust boundary.
+
 ```terraform
-  # Allows you to specify stable, latest, or testing as live install/upgrade channels.
+  # Selects stable, latest, or testing. Initial bootstrap uses the exact channel release
+  # reviewed with this module version; automated upgrades can follow the live channel.
   # For exact Kubernetes minor pinning, use k3s_version instead of a minor k3s_channel.
   # see https://rancher.com/docs/k3s/latest/en/upgrades/basic/ and https://update.k3s.io/v1-release/channels
   # ⚠️ If you are going to use Rancher addons for instance, it's always a good idea to fix the kube version to one minor version below the latest stable,
@@ -1552,7 +1559,8 @@ Excellent! Let's continue our meticulous dissection.
 
 * **`k3s_channel` (String, Optional):**
   * **Default (in module):** `"stable"`.
-  * **Purpose:** Specifies the k3s release channel from which to install k3s initially and, if `automatically_upgrade_kubernetes = true`, from which to pull subsequent upgrades.
+  * **Purpose:** Selects a reviewed channel snapshot for initial bootstrap and, if `automatically_upgrade_kubernetes = true`, the live channel used by subsequent System Upgrade Controller plans.
+  * **Initial-install safety:** A module release maps each accepted channel to one exact release plus architecture-specific payload digests. A later upstream channel movement cannot silently change bootstrap bytes; update the module to consume a newly reviewed snapshot.
   * **Channel Options:**
     * `"stable"`: Points to the latest stable k3s release.
     * `"latest"`: Points to the most recent k3s release, which might include release candidates or newer patches than "stable".
@@ -2514,13 +2522,13 @@ Locked and loaded! Let's continue the detailed exploration.
 **Section 2.23: Base OS Image Configuration**
 
 ```terraform
-  # Leap Micro snapshot IDs to be used (recommended). Per default empty, the most recent image created using createkh will be used.
-  # You can fetch the ids with the hcloud cli by running the "hcloud image list --selector 'leapmicro-snapshot=yes'" command.
+  # Leap Micro snapshot IDs to be used (recommended). Per default empty, the newest image matching kubernetes_distribution is used.
+  # You can fetch the ids with "hcloud image list --selector 'leapmicro-snapshot=yes,kube-hetzner/k8s-distro=<k3s-or-rke2>'".
   # leapmicro_x86_snapshot_id = "1234567"
   # leapmicro_arm_snapshot_id = "1234567"
 
-  # MicroOS snapshot IDs to be used (legacy/upgrade). Per default empty, the most recent image created using createkh will be used.
-  # You can fetch the ids with the hcloud cli by running the "hcloud image list --selector 'microos-snapshot=yes'" command.
+  # MicroOS snapshot IDs to be used (legacy/upgrade). Per default empty, the newest image matching kubernetes_distribution is used, with unlabeled legacy images as fallback.
+  # You can fetch matching ids with "hcloud image list --selector 'microos-snapshot=yes,kube-hetzner/k8s-distro=<k3s-or-rke2>'".
   # microos_x86_snapshot_id = "1234567"
   # microos_arm_snapshot_id = "1234567"
 ```
@@ -2528,13 +2536,13 @@ Locked and loaded! Let's continue the detailed exploration.
 * **Background:** This module supports two immutable openSUSE base OS options for nodes:
   * **Leap Micro** (`leapmicro`, recommended for new nodepools): stable, transactional updates.
   * **MicroOS** (`microos`, legacy/upgrade support): rolling, transactional updates.
-* **Snapshots:** The module expects you to have snapshots in your Hetzner project labeled `leapmicro-snapshot=yes` and/or `microos-snapshot=yes` (typically created via the packer templates in `packer-template/`).
+* **Snapshots:** The module expects snapshots in your Hetzner project labeled `leapmicro-snapshot=yes` and/or `microos-snapshot=yes` (typically created via the Packer templates). Current templates also label the baked policy variant as `kube-hetzner/k8s-distro=k3s|rke2`.
 * **`leapmicro_x86_snapshot_id` / `leapmicro_arm_snapshot_id` (String, Optional):**
-  * **Default:** Empty string (module uses the most recent `leapmicro-snapshot=yes` image for that architecture).
+  * **Default:** Empty string (module uses the newest `leapmicro-snapshot=yes` image for that architecture and `kubernetes_distribution`).
   * **Purpose:** Pin the exact snapshot ID used for Leap Micro nodes (x86 for `cx*`, ARM for `cax*`).
   * **Fetching IDs:** `hcloud image list --selector 'leapmicro-snapshot=yes'`
 * **`microos_x86_snapshot_id` / `microos_arm_snapshot_id` (String, Optional):**
-  * **Default:** Empty string (module uses the most recent `microos-snapshot=yes` image for that architecture).
+  * **Default:** Empty string (module prefers the newest available `microos-snapshot=yes` image for that architecture and `kubernetes_distribution`, then falls back to the newest older image without a distro label).
   * **Purpose:** Pin the exact snapshot ID used for MicroOS nodes (legacy/upgrade scenarios).
   * **Fetching IDs:** `hcloud image list --selector 'microos-snapshot=yes'`
 * **OS selection (`os`) on nodepools (Optional):**
@@ -3137,9 +3145,9 @@ The following variables have been added to the `kube-hetzner` module since the i
 ```
 
 * **`microos_x86_snapshot_id` / `microos_arm_snapshot_id` (String, Optional):**
-  * **Default:** Uses the most recent snapshot created with `createkh`
+  * **Default:** Uses the newest available snapshot matching `kubernetes_distribution`; an older unlabeled MicroOS snapshot is used only when no matching distro-labeled image exists
   * **Purpose:** Pin to specific MicroOS snapshot versions
-  * **Discovery:** `hcloud image list --selector 'microos-snapshot=yes'`
+  * **Discovery:** `hcloud image list --selector 'microos-snapshot=yes,kube-hetzner/k8s-distro=<k3s-or-rke2>'`
   * **Use Case:** Ensure consistency across deployments or rollback to known-good images
 
 **vSwitch Configuration**
@@ -3329,7 +3337,12 @@ These variables are part of the current v3 module contract and should be conside
 * **`rke2_channel` / `rke2_version` (String, Optional):**
   * **Default:** `rke2_channel = "v1.32"`, `rke2_version = "v1.32.5+rke2r1"`.
   * **Purpose:** Selects the RKE2 install channel or exact RKE2 version.
-  * **Considerations:** Exact versions supersede channels.
+  * **Considerations:** Exact versions supersede channels. Initial channel bootstrap uses the release snapshot reviewed with the module; later automated upgrades can follow the configured live channel.
+
+* **`rke2_artifact_sha256` (Map of Strings, Optional):**
+  * **Default:** `{}`.
+  * **Purpose:** Supplies independently reviewed `amd64` and/or `arm64` SHA-256 pins for an exact `rke2_version` not present in the module's reviewed release manifest.
+  * **Compatibility:** Missing architectures preserve existing custom-version behavior by selecting one exact asset digest from that exact official release's checksum publication. A configured digest remains independently pinned. The verified tarball is handed to the pinned official installer through `INSTALL_RKE2_ARTIFACT_PATH`; RKE2 remains on the tar method and never falls back to runtime RPM installation.
 
 * **`cluster_ipv6_cidr` / `service_ipv6_cidr` (String, Optional):**
   * **Default:** `null`.

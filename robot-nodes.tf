@@ -10,7 +10,7 @@ locals {
   extra_robot_nodes_gateway_ipv4 = cidrhost(local.network_ipv4_subnets[var.vswitch_subnet_index], 1)
   extra_robot_nodes_prefix       = split("/", local.network_ipv4_subnets[var.vswitch_subnet_index])[1]
 
-  extra_robot_nodes_install_command = "curl -sfL https://get.k3s.io | INSTALL_K3S_SKIP_START=true INSTALL_K3S_SKIP_SELINUX_RPM=true ${var.k3s_version == "" ? "INSTALL_K3S_CHANNEL=${var.k3s_channel}" : "INSTALL_K3S_VERSION=${var.k3s_version}"} INSTALL_K3S_EXEC='agent ${var.agent_exec_args}' sh -"
+  extra_robot_nodes_install_command = local.k3s_install_agent_command
 }
 
 resource "terraform_data" "extra_robot_nodes" {

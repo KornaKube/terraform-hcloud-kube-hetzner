@@ -4,8 +4,7 @@ name: Publish a new Github Release
 on:
   push:
     tags:
-      - '*'
-  workflow_dispatch:
+      - 'v*'
 
 jobs:
   Release:
@@ -15,9 +14,17 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0  # Full history for contributor extraction
+          persist-credentials: false
+
+      - name: Verify immutable release tree and bootstrap
+        run: |
+          git fetch --no-tags origin master
+          scripts/check-release-ref-on-remote-default-branch.sh HEAD refs/remotes/origin/master
+          scripts/check-release-bootstrap-topology.sh --require-merge HEAD
+          scripts/tests/test_readme_release_bootstrap.sh --require-pinned
 
       - name: Get previous tag
         id: prev_tag
@@ -163,7 +170,7 @@ jobs:
           cat release_body.md
 
       - name: Create Release
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           generateReleaseNotes: true
           name: ${{ github.ref_name }}

@@ -216,6 +216,69 @@ def scenarios(external_network_id: str | None) -> list[Scenario]:
             expect_success=True,
         ),
         Scenario(
+            name="rke2-testing-amd64-valid",
+            extra_module_hcl="""
+            kubernetes_distribution = "rke2"
+            rke2_version             = ""
+            rke2_channel             = "testing"
+            enabled_architectures    = ["x86"]
+            """,
+            expect_success=True,
+        ),
+        Scenario(
+            name="rke2-testing-arm64-invalid",
+            extra_module_hcl="""
+            kubernetes_distribution = "rke2"
+            rke2_version             = ""
+            rke2_channel             = "testing"
+            enabled_architectures    = ["arm"]
+            """,
+            expect_success=False,
+            expect_output=("does not publish", "every active node architecture"),
+            control_plane_nodepools_hcl="""
+            control_plane_nodepools = [
+              {
+                name        = "control-plane"
+                server_type = "cax11"
+                location    = "nbg1"
+                labels      = []
+                taints      = []
+                count       = 1
+              }
+            ]
+            """,
+            agent_nodepools_hcl="""
+            agent_nodepools = [
+              {
+                name        = "agent"
+                server_type = "cax11"
+                location    = "nbg1"
+                labels      = []
+                taints      = []
+                count       = 1
+              }
+            ]
+            """,
+        ),
+        Scenario(
+            name="rke2-testing-dormant-arm64-autoscaler-valid",
+            extra_module_hcl="""
+            kubernetes_distribution = "rke2"
+            rke2_version             = ""
+            rke2_channel             = "testing"
+            autoscaler_nodepools = [
+              {
+                name        = "dormant-arm"
+                server_type = "cax11"
+                location    = "nbg1"
+                min_nodes   = 0
+                max_nodes   = 0
+              }
+            ]
+            """,
+            expect_success=True,
+        ),
+        Scenario(
             name="cilium-dualstack-dormant-pools-valid",
             extra_module_hcl="""
             cni_plugin        = "cilium"

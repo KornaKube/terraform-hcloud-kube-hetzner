@@ -124,6 +124,7 @@
 - `kured_options`
 - `kubernetes_config_updates_use_kured_sentinel`
 - `k3s_version`
+- `k3s_artifact_sha256`
 - `k3s_channel`
 - `system_upgrade_controller_version`
 - `system_upgrade_schedule_window`
@@ -205,6 +206,7 @@
 - `myipv4_ref`
 - `rke2_channel`
 - `rke2_version`
+- `rke2_artifact_sha256`
 - `longhorn_version`
 - `rancher_version`
 - `longhorn_helmchart_bootstrap`
