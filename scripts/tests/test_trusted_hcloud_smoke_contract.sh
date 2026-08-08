@@ -45,9 +45,12 @@ grep -Fq "$default_branch_guard" "$workflow" \
   || fail "workflow must reject dispatches whose selected ref is not the default branch"
 
 verify_line="$(grep -nF 'name: Verify and checkout merged candidate' "$workflow" | cut -d: -f1)"
+hcloud_cli_line="$(grep -nF 'sudo apt-get install --yes hcloud-cli' "$workflow" | cut -d: -f1 || true)"
 secret_line="$(grep -nF "$secret_expression" "$workflow" | head -n 1 | cut -d: -f1)"
 [[ -n "$verify_line" && -n "$secret_line" && "$verify_line" -lt "$secret_line" ]] \
   || fail "candidate ancestry verification must precede every secret-bearing step"
+[[ -n "$hcloud_cli_line" && "$hcloud_cli_line" -lt "$secret_line" ]] \
+  || fail "the HCloud CLI required by the plan matrix must be installed before secret-bearing steps"
 
 if grep -Eq '^[[:space:]]+(pull_request|pull_request_target):' "$workflow"; then
   fail "trusted HCloud smoke must remain manually dispatched"

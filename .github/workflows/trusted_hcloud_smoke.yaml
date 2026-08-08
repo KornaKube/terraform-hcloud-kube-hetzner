@@ -54,6 +54,12 @@ jobs:
           terraform_version: 1.15.0
           terraform_wrapper: false
 
+      - name: Install HCloud CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes hcloud-cli
+          hcloud version
+
       - name: Run token-backed negative contract tests
         env:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN || secrets.TF_VAR_HCLOUD_TOKEN }}
