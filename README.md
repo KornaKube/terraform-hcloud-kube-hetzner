@@ -12,13 +12,15 @@
 
 A highly optimized, easy-to-operate Kubernetes cluster powered by k3s or RKE2 on openSUSE Leap Micro, deployed on [Hetzner Cloud](https://hetzner.com).
 
+**Go from an empty Hetzner project to a running cluster in four steps.**
+
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.10.1-844FBA?style=flat-square&logo=terraform)](https://terraform.io)&nbsp;&nbsp;
 [![OpenTofu](https://img.shields.io/badge/OpenTofu-Compatible-FFDA18?style=flat-square&logo=opentofu)](https://opentofu.org)&nbsp;&nbsp;
 [![HCloud Provider](https://img.shields.io/badge/hcloud-%3E%3D1.62.0-00ADEF?style=flat-square)](https://registry.terraform.io/providers/hetznercloud/hcloud/latest)&nbsp;&nbsp;
 [![K3s](https://img.shields.io/badge/K3s-v1.36-FFC61C?style=flat-square&logo=k3s)](https://k3s.io)&nbsp;&nbsp;
 [![Docs](https://img.shields.io/badge/Docs-index-2F80ED?style=flat-square)](docs/index.md)&nbsp;&nbsp;
 [![License](https://img.shields.io/github/license/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&color=blue)](LICENSE)&nbsp;&nbsp;
-[![GitHub Stars](https://img.shields.io/github/stars/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&logo=github)](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/kube-hetzner/terraform-hcloud-kube-hetzner?style=flat-square&logo=github)](https://github.com/mysticaltech/terraform-hcloud-kube-hetzner)
 
 </div>
 
@@ -172,10 +174,54 @@ Kube-Hetzner is not affiliated with Hetzner.
 
 ## Community
 
-Issues and pull requests are welcome. For contribution setup and repository gates, read [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Questions, ideas, and community support belong in [GitHub Discussions](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/discussions). Issues and pull requests are welcome. For contribution setup and repository gates, read [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-If Kube-Hetzner saves you time and money, you can [sponsor its development](https://github.com/sponsors/mysticaltech). Sponsorship funds issue response, maintenance, security work, and release testing.
+## Support This Project
 
-Kube-Hetzner started from [k-andy](https://github.com/StarpTech/k-andy). Thanks to [Hetzner](https://www.hetzner.com) for supporting the project with cloud credits, and to the k3s, RKE2, openSUSE, Terraform, and OpenTofu communities whose work makes it possible.
+<div align="center">
+
+Kube-Hetzner is free and open source. If it saves you engineering time or infrastructure cost, please help fund its continued development.
+
+<a href="https://github.com/sponsors/mysticaltech">
+<img src="https://img.shields.io/badge/Sponsor_on_GitHub-%E2%9D%A4-EA4AAA?style=for-the-badge&logo=github-sponsors" alt="Sponsor Kube-Hetzner on GitHub">
+</a>
+
+<br><br>
+
+Sponsorship directly supports **issue response**, **new capabilities**, **documentation**, **security maintenance**, and **real-cluster release testing**.
+
+**Every contribution helps keep Kube-Hetzner reliable, current, and available to everyone.**
+
+</div>
+
+---
+
+## Acknowledgements
+
+- [k-andy](https://github.com/StarpTech/k-andy), the starting point for this project.
+- [Rancher](https://www.rancher.com), for k3s and RKE2.
+- [openSUSE](https://www.opensuse.org), for Leap Micro and MicroOS.
+- [HashiCorp](https://www.hashicorp.com) and [OpenTofu](https://opentofu.org), for the infrastructure tooling ecosystem.
+- The contributors and operators who report issues, improve the module, and test real upgrades.
+
+<div align="center">
+
+<a href="https://www.hetzner.com"><img src="https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/raw/master/.images/hetzner-logo.svg" alt="Hetzner - Server, Cloud, Hosting" height="80"></a>
+
+<br><br>
+
+Thanks to **[Hetzner](https://www.hetzner.com)** for supporting Kube-Hetzner with cloud credits.
+
+</div>
+
+---
+
+## License
 
 Released under the [MIT License](LICENSE).
+
+<div align="center">
+
+**[Back to top](#kube-hetzner)**
+
+</div>
