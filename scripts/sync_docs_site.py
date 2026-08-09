@@ -22,26 +22,6 @@ def _extract_section(markdown: str, heading: str) -> str:
     return match.group(0).strip() if match else ""
 
 
-def _site_quick_start(markdown: str, release_tag: str) -> str:
-    bootstrap = re.compile(
-        r"```sh\n# BEGIN_KH_VERIFIED_BOOTSTRAP\n[\s\S]*?"
-        r"\n# END_KH_VERIFIED_BOOTSTRAP\n```"
-    )
-    release_readme = (
-        "https://github.com/mysticaltech/terraform-hcloud-kube-hetzner/"
-        f"blob/{release_tag}/README.md#quick-start"
-    )
-    replacement = (
-        "> The setup bootstrap is cryptographically pinned per release. Run it "
-        f"from the [{release_tag} release README]({release_readme}); a moving "
-        "documentation site cannot safely reproduce release-specific pins."
-    )
-    rendered, count = bootstrap.subn(replacement, markdown)
-    if count != 1:
-        raise ValueError("README must contain exactly one verified bootstrap block")
-    return rendered
-
-
 def _extract_intro(markdown: str) -> str:
     lines = markdown.splitlines()
     cleaned: list[str] = []
@@ -239,13 +219,8 @@ def render() -> dict[Path, str]:
     readme = README.read_text(encoding="utf-8")
     kube_example = KUBE_EXAMPLE.read_text(encoding="utf-8")
 
-    release_match = re.search(r"/releases/tag/(v[0-9]+[.][0-9]+[.][0-9]+)", readme)
-    if not release_match:
-        raise ValueError("README does not identify the current release tag")
-    release_tag = release_match.group(1)
-
     intro = _extract_intro(readme)
-    quick_start = _site_quick_start(_extract_section(readme, "Quick Start"), release_tag)
+    quick_start = _extract_section(readme, "Quick Start")
     architecture = _extract_section(readme, "Architecture")
 
     index_content = "\n\n".join(

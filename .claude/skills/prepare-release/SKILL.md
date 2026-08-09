@@ -249,9 +249,8 @@ uv run scripts/validate_v3_final_polish_examples.py
 uv run scripts/smoke_v3_plan_matrix.py
 scripts/tests/test_github_release_controls_contract.sh
 scripts/check-github-release-controls.sh
-scripts/tests/test_release_bootstrap_topology.sh
-scripts/check-release-bootstrap-topology.sh HEAD
-scripts/tests/test_readme_release_bootstrap.sh --require-pinned
+scripts/tests/test_create_distribution.sh
+scripts/tests/test_generated_site_contract.sh
 ```
 
 The GitHub control check is a live, authenticated pre-release gate. It verifies
@@ -260,34 +259,15 @@ blocks force-push/deletion, `v*` tags have an active creation/update/deletion/
 non-fast-forward ruleset, and no GitHub-hosted HCloud environment remains. A
 repository fixture cannot substitute for these live settings.
 
-The README bootstrap uses a two-commit release invariant to avoid a circular
-archive hash:
-
-1. Freeze and push functional commit `A`, retaining the previous release's
-   valid README pins. The initial bootstrap rollout may use all three exact
-   placeholders, but a pinned default branch must never regress to placeholders.
-   No runtime, Packer, verifier, installer, workflow, or cloud-init byte may
-   change after this point without restarting the process.
-2. Download the canonical Codeload archive for full commit `A` over strict
-   HTTPS and calculate its SHA-256 independently. Calculate the SHA-256 of
-   `packer-template/security-bundle.sha256` from commit `A` as well.
-3. In release-preparation commit `B`, replace only the three prior README
-   bootstrap pin values with commit `A`, the archive digest, and the manifest
-   digest.
-4. Run `scripts/check-release-bootstrap-topology.sh HEAD` and
-   `scripts/tests/test_readme_release_bootstrap.sh --require-pinned`. The first
-   gate proves `A` is an ancestor, the release tree differs from `A` only in
-   `README.md`, only the three pin assignments changed there, and the manifest
-   pin matches `A`. The second downloads the real archive, verifies both pins,
-   rejects tampered fixtures, overrides inherited source selection, and
-   generates a clean temporary project from the extracted entrypoint.
-5. Merge both commits through the protected release pull request using GitHub's
-   **merge-commit** method. Squash and rebase merges destroy the reviewed A/B
-   graph and are forbidden for this PR. The merge tree must equal `B`, and the
-   other merge parent must already be ancestral to `A`. Record post-`A`
-   evidence in the release PR or local run logs; any repository edit beyond the
-   three README pins requires a new `A`, new pins, and repeated exact-tree
-   gates. The tag workflow only publishes the locally verified result.
+Keep setup simple: the README exposes the canonical `createkh` one-liners while
+`scripts/create.sh` owns source distribution, manifest verification, and atomic
+Packer bundle publication. Test the downloaded-script path and the checked-out
+source path before release. A specific release can be selected with
+`KH_SOURCE_REF=vX.Y.Z`. Exceptional independently verified remote builds must
+set all three strict pins together: `KH_SOURCE_COMMIT` (full 40-character SHA),
+`KH_SOURCE_ARCHIVE_SHA256`, and `KH_PACKER_BUNDLE_MANIFEST_SHA256`. Strict pins
+cannot be combined with `KH_SOURCE_DIRECTORY` and are not part of normal release
+choreography.
 
 Cross-variable and local-dependent module contract failures are hard
 `terraform_data.validation_contract` preconditions, so invalid-combination
@@ -299,8 +279,8 @@ Also verify `README.md`, `kube.tf.example`, `docs/llms.md`, and `.claude/skills/
 For v3 releases, verify README's "What's New in v3" release-tag URL points to
 the current tag and does not keep stale pre-release wording after the GitHub
 release exists. Regenerate `site-docs` and run
-`scripts/tests/test_generated_site_contract.sh`; the moving site must route to
-that release-tagged README instead of copying release-specific bootstrap pins.
+`scripts/tests/test_generated_site_contract.sh`; the site must reproduce the
+same simple setup commands as the README.
 
 For v3, additionally verify the Tailscale node-transport surfaces stay aligned:
 `node_transport_mode = "tailscale"` is the supported secure single-network and
@@ -411,10 +391,6 @@ RELEASE_COMMIT=$(git rev-parse HEAD)
 git tag --list "$VERSION"
 git ls-remote --tags origin "refs/tags/$VERSION"
 
-# Run the slow immutable-tree gates before the final live authority checks.
-scripts/check-release-bootstrap-topology.sh --require-merge HEAD
-scripts/tests/test_readme_release_bootstrap.sh --require-pinned
-
 # Immediately before tagging, re-prove live controls and refresh the authoritative
 # branch. The atomic push lease prevents the tag from publishing if master moves
 # after this fetch.
@@ -435,10 +411,11 @@ gh run list --repo "$REPO" --workflow "Publish a new Github Release" --limit 1
 gh release view "$VERSION" --repo "$REPO"
 ```
 
-If publication fails, do not move the immutable tag. Re-run the local
-remote-tree, topology, real-bootstrap, and GitHub-control gates against the tag
-target, regenerate the exact release body from that tag's `[Unreleased]`
-section, confirm no partial release exists, then use
+If publication fails, do not move the immutable tag. Re-run all local release
+gates against the tag target, including create distribution, generated docs,
+the authoritative remote-branch check, and live GitHub controls. Regenerate the
+exact release body from that tag's `[Unreleased]` section, confirm no partial
+release exists, then use
 `gh release create "$VERSION" --title "$VERSION" --notes-file <file> --generate-notes`.
 
 A pushed release tag is immutable. If the workflow definition at that tag has a
@@ -509,7 +486,7 @@ Files that may need version updates:
 - [ ] Version badges updated (if needed)
 - [ ] `docs/terraform.md` regenerated
 - [ ] README "What's New in v3" release-tag URL is accurate/current for v3-series releases
-- [ ] Generated site routes setup to that release-tagged README and contains no raw/moving setup bootstrap or unresolved pins
+- [ ] Generated site carries the same simple `createkh` setup commands as README
 - [ ] Knowledge file (`kube-hetzner-knowledge.jsondata`) regenerated when applicable and `meta.version` matches the release
 - [ ] Project skills checked for stale v2 names
 - [ ] Tailscale node-transport README/example/skill guidance matches variables.tf
@@ -518,9 +495,7 @@ Files that may need version updates:
 - [ ] `uv run scripts/validate_v3_final_polish_examples.py` passed
 - [ ] `uv run scripts/smoke_v3_plan_matrix.py` passed for Gateway API, registry mirror, public join endpoint guards, k3s/RKE2 Tailscale multinetwork constraints, and single-Gateway-controller validation
 - [ ] Terraform and OpenTofu validation passed
-- [ ] README bootstrap pins the frozen functional commit, archive digest, and Packer manifest digest
-- [ ] `scripts/check-release-bootstrap-topology.sh HEAD` proves the release tree is functional commit A plus only the three README pins
-- [ ] `scripts/tests/test_readme_release_bootstrap.sh --require-pinned` passed against the real Codeload archive
+- [ ] `scripts/tests/test_create_distribution.sh` passed for local and downloaded-script source modes
 - [ ] Adversarial and live GitHub release-control gates passed
 - [ ] Required cheap PR lint has a completed successful run
 - [ ] HCloud plan/apply, cluster inspection, and destroy evidence was produced locally
