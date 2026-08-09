@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📚 Documentation
 
-- Reorganized the README into a concise visual overview, four-step Quick Start, and documentation index; moved upgrades, support details, day-2 operations, recipes, and troubleshooting into focused guides.
+- Reorganized the README into a concise visual overview, four-step Quick Start, and documentation index; moved upgrades, support details, day-2 operations, recipes, and troubleshooting into focused guides while preserving the project-support and Hetzner acknowledgement footer.
 - Added the K3s certificate-expiry recovery step for retrieving a renewed admin kubeconfig over SSH from a healthy control-plane node and replacing its loopback API endpoint locally.
 
 ---

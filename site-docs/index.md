@@ -11,6 +11,8 @@
 
 A highly optimized, easy-to-operate Kubernetes cluster powered by k3s or RKE2 on openSUSE Leap Micro, deployed on [Hetzner Cloud](https://hetzner.com).
 
+**Go from an empty Hetzner project to a running cluster in four steps.**
+
 
 
 ---
