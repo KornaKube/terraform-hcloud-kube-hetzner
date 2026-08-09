@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- Made the generated-site contract test portable to clean GitHub Actions runners instead of requiring undeclared `rg`. CI installs Zsh and Fish and fails closed when a documented shell verifier is missing; local runs print an explicit skip when an optional shell is unavailable.
+
 ### 🔧 Changes
 
 - Kept GitHub CI focused on cheap required lint, documentation drift, and tag publication; HCloud smoke, credentials, cluster inspection, and teardown now remain local. Tag publication rejects missing release notes.
@@ -14,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📚 Documentation
 
+- Reorganized the README into a concise visual overview, four-step Quick Start, and documentation index; moved upgrades, support details, day-2 operations, recipes, and troubleshooting into focused guides.
 - Added the K3s certificate-expiry recovery step for retrieving a renewed admin kubeconfig over SSH from a healthy control-plane node and replacing its loopback API endpoint locally.
 
 ---

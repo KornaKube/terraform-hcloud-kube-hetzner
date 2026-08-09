@@ -129,6 +129,7 @@ jobs:
 
       - name: Validate Packer template and verifier fixtures
         env:
+          KH_REQUIRE_OPTIONAL_SHELLS: "1"
           PACKER_PLUGIN_PATH: ${{ runner.temp }}/packer-plugins
         run: |
           packer fmt -check packer-template/hcloud-leapmicro-snapshots.pkr.hcl packer-template/hcloud-microos-snapshots.pkr.hcl
