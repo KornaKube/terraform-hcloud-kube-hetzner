@@ -33,23 +33,20 @@ extract_line="$(grep -n 'name: Extract reviewed changelog' "$workflow" | cut -d:
 release_line="$(grep -n 'uses: ncipollo/release-action@' "$workflow" | cut -d: -f1)"
 [[ "$extract_line" -lt "$release_line" ]] || fail "reviewed changelog extraction must precede publication"
 
-grep -Fq 'scripts/tests/test_release_bootstrap_topology.sh' "$lint_workflow" \
-  || fail "pull-request CI omits adversarial release topology fixtures"
-grep -Fq 'scripts/tests/test_release_bootstrap_pr_gate.sh' "$lint_workflow" \
-  || fail "pull-request CI omits adversarial release-state classification fixtures"
+grep -Fq 'scripts/tests/test_create_distribution.sh' "$lint_workflow" \
+  || fail "pull-request CI omits createkh distribution fixtures"
+grep -Fq 'scripts/tests/test_generated_site_contract.sh' "$lint_workflow" \
+  || fail "pull-request CI omits generated createkh documentation checks"
 grep -Fq 'scripts/tests/test_release_remote_branch_contract.sh' "$lint_workflow" \
   || fail "pull-request CI omits adversarial authoritative-branch fixtures"
 grep -Fq 'scripts/tests/test_release_atomic_tag_push.sh' "$lint_workflow" \
   || fail "pull-request CI omits the atomic tag-push race fixture"
-grep -Fq 'scripts/check-release-bootstrap-pr-gate.sh' "$lint_workflow" \
-  || fail "pull-request CI does not fail closed across placeholder and pinned states"
-grep -Fq 'KH_RELEASE_BASE_REF: ${{ github.event.pull_request.base.sha }}' "$lint_workflow" \
-  || fail "pull-request bootstrap comparison is not anchored to the trusted base commit"
 [[ ! -e "$repo_root/.github/workflows/trusted_hcloud_smoke.yaml" ]] \
   || fail "GitHub-hosted HCloud smoke must be removed"
 
-grep -Fq '**merge-commit** method' "$release_skill" \
-  || fail "release process does not forbid squash/rebase destruction of the A/B graph"
+if rg -n 'functional commit A|A/B graph|bootstrap pin|check-release-bootstrap' "$release_skill"; then
+  fail "release skill still carries obsolete README pin choreography"
+fi
 execute_release="$(sed -n '/^## Execute Release/,/^## Post-Release Verification/p' "$release_skill")"
 if grep -Fq 'git pull origin master' <<< "$execute_release"; then
   fail "release execution still inherits unsafe local pull.ff behavior"
@@ -59,14 +56,12 @@ final_fetch_line="$(grep -n 'git fetch --no-tags origin master' <<< "$execute_re
 merge_line="$(grep -n 'git merge --ff-only refs/remotes/origin/master' <<< "$execute_release" | cut -d: -f1)"
 remote_line="$(grep -n "scripts/check-release-ref-on-remote-default-branch.sh --require-tip \"\$RELEASE_COMMIT\" refs/remotes/origin/master" <<< "$execute_release" | cut -d: -f1)"
 controls_line="$(grep -n 'scripts/check-github-release-controls.sh' <<< "$execute_release" | cut -d: -f1)"
-topology_line="$(grep -n 'scripts/check-release-bootstrap-topology.sh --require-merge HEAD' <<< "$execute_release" | cut -d: -f1)"
-bootstrap_line="$(grep -n 'scripts/tests/test_readme_release_bootstrap.sh --require-pinned' <<< "$execute_release" | cut -d: -f1)"
 head_line="$(grep -n "test \"\$(git rev-parse HEAD)\" = \"\$RELEASE_COMMIT\"" <<< "$execute_release" | cut -d: -f1)"
 tag_line="$(grep -n "git tag -a \"\$VERSION\" \"\$RELEASE_COMMIT\" -m \"Release \$VERSION\"" <<< "$execute_release" | cut -d: -f1)"
 push_line="$(grep -n "git push --atomic --force-with-lease=\"refs/heads/master:\$RELEASE_COMMIT\"" <<< "$execute_release" | cut -d: -f1)"
 grep -Fq "\"\${RELEASE_COMMIT}:refs/heads/master\" \"refs/tags/\$VERSION\"" <<< "$execute_release" \
   || fail "release tag push does not atomically lease protected master"
-[[ "$initial_fetch_line" -lt "$merge_line" && "$merge_line" -lt "$topology_line" && "$topology_line" -lt "$bootstrap_line" && "$bootstrap_line" -lt "$controls_line" && "$controls_line" -lt "$final_fetch_line" && "$final_fetch_line" -lt "$remote_line" && "$remote_line" -lt "$head_line" && "$head_line" -lt "$tag_line" && "$tag_line" -lt "$push_line" ]] \
-  || fail "local immutable gates must precede live controls and lease-guarded tag publication"
+[[ "$initial_fetch_line" -lt "$merge_line" && "$merge_line" -lt "$controls_line" && "$controls_line" -lt "$final_fetch_line" && "$final_fetch_line" -lt "$remote_line" && "$remote_line" -lt "$head_line" && "$head_line" -lt "$tag_line" && "$tag_line" -lt "$push_line" ]] \
+  || fail "local release preparation must precede live controls and lease-guarded tag publication"
 
 printf 'PASS: cheap GitHub publication is tag-only while release integrity and cloud proof remain local.\n'

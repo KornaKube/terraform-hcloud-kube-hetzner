@@ -13,12 +13,22 @@ mkdir -p "$fake_bin" "$target_parent"
 
 system_cp="$(command -v cp)"
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 grep -Fq -- '--connect-timeout 20 --max-time 300' "$repo_root/scripts/create.sh" \
   || { echo 'FAIL: source archive download is missing bounded network timeouts' >&2; exit 1; }
 grep -Fq -- '--max-filesize 536870912' "$repo_root/scripts/create.sh" \
   || { echo 'FAIL: source archive download is missing a size bound' >&2; exit 1; }
-grep -Fq -- "https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/\${KH_SOURCE_COMMIT}" "$repo_root/scripts/create.sh" \
-  || { echo 'FAIL: source archive download does not use the canonical immutable Codeload path' >&2; exit 1; }
+grep -Fq -- 'KH_SOURCE_REF="${KH_SOURCE_REF:-master}"' "$repo_root/scripts/create.sh" \
+  || { echo 'FAIL: downloaded create.sh does not default to the current master source' >&2; exit 1; }
+grep -Fq -- "https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/\${source_ref}" "$repo_root/scripts/create.sh" \
+  || { echo 'FAIL: source archive download does not use the canonical Codeload path' >&2; exit 1; }
 
 for command_name in hcloud packer ssh tofu; do
   printf '#!/bin/sh\nexit 0\n' > "$fake_bin/$command_name"
@@ -61,6 +71,138 @@ make_source_fixture() {
   printf '%s\n' "$kube_contents" > "$destination/kube.tf.example"
   "$system_cp" -R "$repo_root/packer-template" "$destination/packer-template"
 }
+
+remote_bin="$tmp/remote-bin"
+remote_source_root="$tmp/remote-archive/kube-hetzner-fixture"
+remote_archive="$tmp/remote-source.tar.gz"
+remote_url_log="$tmp/remote-url"
+mkdir -p "$remote_bin" "$(dirname "$remote_source_root")"
+make_source_fixture "$remote_source_root" 'remote-kube-config'
+tar -czf "$remote_archive" -C "$(dirname "$remote_source_root")" \
+  "$(basename "$remote_source_root")"
+cat > "$remote_bin/curl" <<'REMOTE_CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+url=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output="$2"
+      shift 2
+      ;;
+    https://*)
+      url="$1"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+[[ -n "$output" && -n "$url" ]]
+printf '%s\n' "$url" > "$CREATE_TEST_REMOTE_URL_LOG"
+"$CREATE_TEST_SYSTEM_CP" "$CREATE_TEST_REMOTE_ARCHIVE" "$output"
+REMOTE_CURL
+chmod 700 "$remote_bin/curl"
+
+env \
+  PATH="$remote_bin:$fake_bin:$PATH" \
+  CREATE_TEST_REMOTE_ARCHIVE="$remote_archive" \
+  CREATE_TEST_REMOTE_URL_LOG="$remote_url_log" \
+  CREATE_TEST_SYSTEM_CP="$system_cp" \
+  KH_SOURCE_REF=fixture-ref \
+  folder_name=remote \
+  folder_path="$target_parent" \
+  create_snapshots=none \
+  bash "$repo_root/scripts/create.sh" >/dev/null
+grep -Fxq \
+  'https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/fixture-ref' \
+  "$remote_url_log" \
+  || { echo 'FAIL: create.sh did not use the requested simple source ref' >&2; exit 1; }
+grep -Fxq 'remote-kube-config' "$target_parent/remote/kube.tf" \
+  || { echo 'FAIL: downloaded create.sh did not publish kube.tf' >&2; exit 1; }
+[[ -L "$target_parent/remote/packer" ]] \
+  || { echo 'FAIL: downloaded create.sh did not publish the verified Packer bundle' >&2; exit 1; }
+
+strict_commit="1111111111111111111111111111111111111111"
+strict_archive_sha256="$(sha256_file "$remote_archive")"
+strict_manifest_sha256="$(sha256_file "$remote_source_root/packer-template/security-bundle.sha256")"
+env \
+  PATH="$remote_bin:$fake_bin:$PATH" \
+  CREATE_TEST_REMOTE_ARCHIVE="$remote_archive" \
+  CREATE_TEST_REMOTE_URL_LOG="$remote_url_log" \
+  CREATE_TEST_SYSTEM_CP="$system_cp" \
+  KH_SOURCE_COMMIT="$strict_commit" \
+  KH_SOURCE_ARCHIVE_SHA256="$strict_archive_sha256" \
+  KH_PACKER_BUNDLE_MANIFEST_SHA256="$strict_manifest_sha256" \
+  folder_name=strict-remote \
+  folder_path="$target_parent" \
+  create_snapshots=none \
+  bash "$repo_root/scripts/create.sh" >/dev/null
+grep -Fxq \
+  "https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/$strict_commit" \
+  "$remote_url_log" \
+  || { echo 'FAIL: pinned create.sh did not use the exact commit' >&2; exit 1; }
+
+if env \
+  PATH="$remote_bin:$fake_bin:$PATH" \
+  CREATE_TEST_REMOTE_ARCHIVE="$remote_archive" \
+  CREATE_TEST_REMOTE_URL_LOG="$remote_url_log" \
+  CREATE_TEST_SYSTEM_CP="$system_cp" \
+  KH_SOURCE_COMMIT="$strict_commit" \
+  KH_SOURCE_ARCHIVE_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
+  KH_PACKER_BUNDLE_MANIFEST_SHA256="$strict_manifest_sha256" \
+  folder_name=wrong-archive-digest \
+  folder_path="$target_parent" \
+  create_snapshots=none \
+  bash "$repo_root/scripts/create.sh" >/dev/null 2>&1; then
+  echo 'FAIL: pinned create.sh accepted the wrong source archive digest' >&2
+  exit 1
+fi
+
+if env \
+  PATH="$remote_bin:$fake_bin:$PATH" \
+  CREATE_TEST_REMOTE_ARCHIVE="$remote_archive" \
+  CREATE_TEST_REMOTE_URL_LOG="$remote_url_log" \
+  CREATE_TEST_SYSTEM_CP="$system_cp" \
+  KH_SOURCE_COMMIT="$strict_commit" \
+  folder_name=partial-pin \
+  folder_path="$target_parent" \
+  create_snapshots=none \
+  bash "$repo_root/scripts/create.sh" >/dev/null 2>&1; then
+  echo 'FAIL: create.sh accepted a partial strict pin set' >&2
+  exit 1
+fi
+
+if env \
+  PATH="$fake_bin:$PATH" \
+  KH_SOURCE_DIRECTORY="$repo_root" \
+  KH_SOURCE_COMMIT="$strict_commit" \
+  KH_SOURCE_ARCHIVE_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
+  KH_PACKER_BUNDLE_MANIFEST_SHA256="$strict_manifest_sha256" \
+  folder_name=local-pin-bypass \
+  folder_path="$target_parent" \
+  create_snapshots=none \
+  bash "$repo_root/scripts/create.sh" >/dev/null 2>&1; then
+  echo 'FAIL: create.sh accepted local source together with remote pins' >&2
+  exit 1
+fi
+
+if env \
+  PATH="$remote_bin:$fake_bin:$PATH" \
+  CREATE_TEST_REMOTE_ARCHIVE="$remote_archive" \
+  CREATE_TEST_REMOTE_URL_LOG="$remote_url_log" \
+  CREATE_TEST_SYSTEM_CP="$system_cp" \
+  KH_SOURCE_REF=../unsafe \
+  folder_name=unsafe-ref \
+  folder_path="$target_parent" \
+  create_snapshots=none \
+  bash "$repo_root/scripts/create.sh" >/dev/null 2>&1; then
+  echo 'FAIL: create.sh accepted an unsafe source ref' >&2
+  exit 1
+fi
 
 run_create
 [[ -L "$target/packer" ]] \
@@ -231,4 +373,4 @@ if env \
   exit 1
 fi
 
-echo 'PASS: create.sh atomically distributes one source snapshot, preserves existing and racing files, resists predictable temp symlinks, supports concurrent runs, cleans temporary files, and propagates build failures.'
+echo 'PASS: create.sh supports simple and strictly pinned downloads, verifies bundles, publishes atomically, preserves user files, handles races safely, cleans temporary files, and propagates build failures.'

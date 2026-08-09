@@ -76,7 +76,7 @@ The biggest release in kube-hetzner history: months of hardening, every flagship
 
 - [Highlights](#-highlights)
 - [What's New in v3](#-whats-new-in-v3)
-- [Quickstart](#-quickstart)
+- [Quick Start](#quick-start)
 - [Upgrading & Migration](#-upgrading--migration)
 - [Features & Support Matrix](#-features--support-matrix)
 - [Configuration & Documentation](#-configuration--documentation)
@@ -89,221 +89,40 @@ The biggest release in kube-hetzner history: months of hardening, every flagship
 
 ---
 
-## 🚀 Quickstart
+## Quick Start
 
-### Prerequisites
+1. Install [OpenTofu](https://opentofu.org/docs/intro/install/) or [Terraform](https://developer.hashicorp.com/terraform/install), [Packer 1.16.0](https://releases.hashicorp.com/packer/1.16.0/), [kubectl](https://kubernetes.io/docs/tasks/tools/), and [hcloud](https://github.com/hetznercloud/cli). With Homebrew, install the other tools in one command:
 
-<table>
-<tr>
-<th>Platform</th>
-<th>Installation Command</th>
-</tr>
-<tr>
-<td><strong>Homebrew</strong> (macOS/Linux)</td>
-<td><code>brew install opentofu hashicorp/tap/packer kubectl hcloud</code><br><small>Optional Terraform CLI: <code>brew install hashicorp/tap/terraform</code></small></td>
-</tr>
-<tr>
-<td><strong>Arch Linux</strong></td>
-<td><code>yay -S terraform packer kubectl hcloud</code></td>
-</tr>
-<tr>
-<td><strong>Debian/Ubuntu</strong></td>
-<td><code>sudo apt install terraform packer kubectl</code></td>
-</tr>
-<tr>
-<td><strong>Fedora/RHEL</strong></td>
-<td><code>sudo dnf install terraform packer kubectl</code></td>
-</tr>
-<tr>
-<td><strong>Windows</strong></td>
-<td><code>choco install terraform packer kubernetes-cli hcloud</code></td>
-</tr>
-</table>
+   ```sh
+   brew install opentofu kubectl hcloud
+   ```
 
-> **Required tools:** [Terraform](https://learn.hashicorp.com/tutorials/terraform/install-cli) or [OpenTofu](https://opentofu.org/docs/intro/install/) >= 1.10.1 (`brew install opentofu`), [Packer](https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli#installing-packer) = 1.16.0 for image builds, [kubectl](https://kubernetes.io/docs/tasks/tools/), and [hcloud](https://github.com/hetznercloud/cli). The module requires `hetznercloud/hcloud` provider >= 1.62.0.
+2. Create a [Hetzner Cloud project](https://console.hetzner.cloud/), create a Read & Write API token, and generate a passphrase-less SSH key (`ssh-keygen -t ed25519`).
 
-OpenTofu is officially supported. Pull requests are validated in CI with both Terraform and OpenTofu, including real Hetzner preset apply/health/destroy tests when Hetzner E2E is enabled.
+3. Run `createkh`. It creates your project folder, `kube.tf`, and the required Leap Micro images.
 
----
+   Bash/Zsh:
 
-### Quick Start
+   ```sh
+   (tmp_script=$(mktemp) && trap 'rm -f "$tmp_script"' EXIT && curl -fsSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh && chmod +x "$tmp_script" && env -u KH_SOURCE_DIRECTORY "$tmp_script")
+   ```
 
-<table>
-<tr>
-<td>1️⃣</td>
-<td><strong>Create a Hetzner project</strong> at <a href="https://console.hetzner.cloud/">console.hetzner.cloud</a> and grab an API token (Read & Write)</td>
-</tr>
-<tr>
-<td>2️⃣</td>
-<td><strong>Generate an SSH key pair</strong> (passphrase-less ed25519) — or see <a href="docs/ssh.md">SSH options</a></td>
-</tr>
-<tr>
-<td>3️⃣</td>
-<td><strong>Run the setup script</strong> — creates your project folder and OS snapshots (Leap Micro recommended):</td>
-</tr>
-</table>
+   Fish:
 
-```sh
-# BEGIN_KH_VERIFIED_BOOTSTRAP
-(
-  set -eu
-  umask 077
-  kh_commit="7c0839ca2a55376ab59cf90f6c7bfd0a6b4ed4de"
-  kh_archive_sha256="d76c4c7b2eac018a3275ce47c657e00b5106b6929fe7c7d670e8f1d7fbfd760b"
-  kh_manifest_sha256="673a97425d26d25802e699281d800f2a44a4feb744dd11c88bca0a44175726a4"
+   ```fish
+   set tmp_script (mktemp); curl -fsSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; and chmod +x "$tmp_script"; and env -u KH_SOURCE_DIRECTORY bash "$tmp_script"; set run_status $status; rm -f "$tmp_script"; test $run_status -eq 0
+   ```
 
-  printf '%s\n' "$kh_commit" | grep -Eq '^[0-9a-f]{40}$' || {
-    echo "The release bootstrap is missing its immutable source commit." >&2
-    exit 1
-  }
-  printf '%s\n' "$kh_archive_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
-    echo "The release bootstrap is missing its reviewed source archive digest." >&2
-    exit 1
-  }
-  printf '%s\n' "$kh_manifest_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
-    echo "The release bootstrap is missing its reviewed Packer manifest digest." >&2
-    exit 1
-  }
+4. Edit `kube.tf`, remove any example node pools you do not need, then deploy:
 
-  kh_tmp="$(mktemp -d)"
-  kh_archive="$kh_tmp/source.tar.gz"
-  kh_source="$kh_tmp/source"
-  trap 'rm -rf "$kh_tmp"' EXIT
-  trap 'exit 129' HUP
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+   ```sh
+   cd <your-project-folder>
+   tofu init --upgrade
+   tofu plan
+   tofu apply
+   ```
 
-  curl -fsS --proto '=https' --tlsv1.2 --max-redirs 0 \
-    --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 \
-    --max-filesize 536870912 \
-    "https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/$kh_commit" \
-    -o "$kh_archive"
-  if command -v sha256sum >/dev/null 2>&1; then
-    kh_archive_actual="$(sha256sum "$kh_archive" | awk '{print $1}')"
-  else
-    kh_archive_actual="$(shasum -a 256 "$kh_archive" | awk '{print $1}')"
-  fi
-  [ "$kh_archive_actual" = "$kh_archive_sha256" ] || {
-    echo "Release source archive digest mismatch." >&2
-    exit 1
-  }
-
-  mkdir "$kh_source"
-  tar -xzf "$kh_archive" -C "$kh_source" --strip-components=1
-  kh_manifest="$kh_source/packer-template/security-bundle.sha256"
-  [ -f "$kh_manifest" ] || {
-    echo "Release source archive is missing the Packer security manifest." >&2
-    exit 1
-  }
-  if command -v sha256sum >/dev/null 2>&1; then
-    kh_manifest_actual="$(sha256sum "$kh_manifest" | awk '{print $1}')"
-  else
-    kh_manifest_actual="$(shasum -a 256 "$kh_manifest" | awk '{print $1}')"
-  fi
-  [ "$kh_manifest_actual" = "$kh_manifest_sha256" ] || {
-    echo "Release Packer security manifest digest mismatch." >&2
-    exit 1
-  }
-
-  KH_SOURCE_DIRECTORY="$kh_source" \
-    KH_SOURCE_COMMIT="$kh_commit" \
-    KH_SOURCE_ARCHIVE_SHA256="$kh_archive_sha256" \
-    KH_PACKER_BUNDLE_MANIFEST_SHA256="$kh_manifest_sha256" \
-    "$kh_source/scripts/create.sh"
-)
-# END_KH_VERIFIED_BOOTSTRAP
-```
-
-The bootstrap downloads one immutable commit archive and verifies its reviewed
-SHA-256 before extracting or executing any release code. It then verifies the
-Packer security manifest independently and explicitly overrides any inherited
-source-directory setting before running the extracted setup entrypoint. To use
-an older release, open that tag's README and run its pinned bootstrap. The Packer
-templates, signing keys, verifier scripts, and bundle installer are accepted
-only when every file matches the reviewed release manifest, and they are
-installed as one transaction. A partial or locally modified old bundle stops
-the setup with an explicit error; `kube.tf` remains outside this transaction so
-the setup continues to preserve user configuration. The verified generation is
-published through one `packer/` directory link only after the whole bundle is
-valid, so Packer never sees a half-installed trust bundle.
-
-The downloaded `kube.tf.example` is an exhaustive showcase, not a minimal
-starter: it currently defines 3 control-plane pools (3 nodes) and 6 active static
-agent pools (7 agent nodes) covering storage, egress, ARM, and node-map examples.
-Trim the pools and feature examples you do not need before first apply.
-
-<details>
-<summary><strong>Fish shell version</strong></summary>
-
-```fish
-bash
-# Run the verified bootstrap from the desired release README, then exit back to Fish.
-```
-</details>
-
-<details>
-<summary><strong>Pin a specific release</strong></summary>
-
-Open the desired release tag on GitHub and run the verified bootstrap from that
-tag's README. Each release carries its own immutable commit and reviewed archive
-and manifest digests; ambient variables cannot select a different source.
-</details>
-
-<details>
-<summary><strong>What the script does</strong></summary>
-
-```sh
-mkdir /path/to/your/new/folder
-cd /path/to/your/new/folder
-# scripts/create.sh downloads the release commit archive, preserves kube.tf,
-# and atomically publishes the verified Packer security bundle under packer/.
-export HCLOUD_TOKEN="your_hcloud_token"
-cd packer
-./scripts/install-verified-packer-plugin-hcloud.sh
-packer init hcloud-leapmicro-snapshots.pkr.hcl
-for distro in k3s rke2; do
-  packer build -var "selinux_package_to_install=${distro}" hcloud-leapmicro-snapshots.pkr.hcl
-done
-# (optional legacy)
-# packer init hcloud-microos-snapshots.pkr.hcl
-# for distro in k3s rke2; do
-#   packer build -var "selinux_package_to_install=${distro}" hcloud-microos-snapshots.pkr.hcl
-# done
-hcloud context create <project-name>
-```
-</details>
-
-<table>
-<tr>
-<td>4️⃣</td>
-<td><strong>Customize your <code>kube.tf</code></strong> — full reference in <a href="docs/terraform.md">terraform.md</a></td>
-</tr>
-</table>
-
----
-
-### 🎯 Deploy
-
-```sh
-cd <your-project-folder>
-terraform init --upgrade
-terraform validate
-terraform plan
-terraform apply -auto-approve
-```
-
-OpenTofu works the same way:
-
-```sh
-tofu init --upgrade
-tofu validate
-tofu plan
-tofu apply -auto-approve
-```
-
-**~5 minutes later:** Your cluster is ready! 🎉
-
-> ⚠️ Once Terraform manages your cluster, avoid manual changes in the Hetzner UI. Use `hcloud` CLI to inspect resources.
+   Use `terraform` instead of `tofu` if that is what you installed. See the [configuration reference](docs/terraform.md) for all options.
 
 ---
 
@@ -543,7 +362,7 @@ control planes without one of those hosts are rejected during validation.
 
 ### Configuration overview
 
-Reference configuration starts in [`kube.tf.example`](kube.tf.example). It is the exhaustive showcase called out in the Quickstart, so trim unused pools and feature examples before first apply.
+Reference configuration starts in [`kube.tf.example`](kube.tf.example). It is an exhaustive showcase, so trim unused pools and feature examples before first apply.
 
 Most components use [Helm Chart](https://rancher.com/docs/k3s/latest/en/helm/) definitions via k3s Helm Controller.
 
@@ -1886,8 +1705,36 @@ done
 If automatic renewal on restart is not enough, use the
 [K3s manual rotation flow](https://docs.k3s.io/cli/certificate) on each server
 (`systemctl stop k3s`, `k3s certificate rotate`, `systemctl start k3s`). Rotate
-servers first, then agents. After the controller manager observes the pending
-Deployment generation, rerun the rollout check:
+servers first, then agents.
+
+The admin kubeconfig contains client certificates too. After renewal or
+rotation, fetch a fresh copy from any healthy control-plane node, replace its
+loopback API address with the endpoint you use to reach the cluster, and verify
+it before atomically replacing your local copy:
+
+```sh
+control_plane_ip=203.0.113.10
+reachable_api_host=api.example.com
+private_key=/path/to/private_key
+kubeconfig=clustername_kubeconfig.yaml
+(
+  set -eu
+  umask 077
+  tmp_kubeconfig=$(mktemp "$(dirname "$kubeconfig")/.k3s-kubeconfig.tmp.XXXXXX")
+  trap 'rm -f "$tmp_kubeconfig"' EXIT
+  ssh "root@$control_plane_ip" -i "$private_key" \
+    'cat /etc/rancher/k3s/k3s.yaml' > "$tmp_kubeconfig" || exit 1
+  kubectl config set-cluster default \
+    --server="https://$reachable_api_host:6443" \
+    --kubeconfig="$tmp_kubeconfig" || exit 1
+  kubectl --kubeconfig="$tmp_kubeconfig" get nodes || exit 1
+  mv "$tmp_kubeconfig" "$kubeconfig" || exit 1
+  trap - EXIT
+)
+```
+
+After the controller manager observes the pending Deployment generation, rerun
+the rollout check:
 
 ```sh
 kubectl rollout status deploy/<name> --timeout=300s
@@ -1901,16 +1748,34 @@ kubectl get pods -l app=<label> -o wide
 The recommended teardown path is `scripts/destroy.sh`: it runs `terraform`/`tofu destroy` with any extra args you pass, auto-retries the known benign ingress LB detach race documented in `plans/011`, and then prints a read-only hcloud orphan report. If state is already wrecked or resources are stuck outside Terraform, use `scripts/cleanup.sh` as the forceful fallback; it keeps a dry-run prompt by default.
 
 ```sh
-tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/destroy.sh && chmod +x "${tmp_script}" && "${tmp_script}" && rm "${tmp_script}"
+(tmp_script=$(mktemp) && trap 'rm -f "$tmp_script"' EXIT && curl -fsSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/destroy.sh && chmod +x "$tmp_script" && "$tmp_script")
 ```
 
 Forceful cleanup fallback:
 
 ```sh
-tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/cleanup.sh && chmod +x "${tmp_script}" && "${tmp_script}" && rm "${tmp_script}"
+(tmp_script=$(mktemp) && trap 'rm -f "$tmp_script"' EXIT && curl -fsSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/cleanup.sh && chmod +x "$tmp_script" && "$tmp_script")
 ```
 
 > ⚠️ This deletes everything including volumes. Dry-run option available.
+
+<details>
+<summary><strong>Fish shell version</strong></summary>
+
+```fish
+set tmp_script (mktemp); curl -fsSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/cleanup.sh; and chmod +x "$tmp_script"; and bash "$tmp_script"; set run_status $status; rm -f "$tmp_script"; test $run_status -eq 0
+```
+
+</details>
+
+<details>
+<summary><strong>Save as <code>cleanupkh</code> (Bash/Zsh)</strong></summary>
+
+```sh
+cleanupkh() { (tmp_script=$(mktemp) && trap 'rm -f "$tmp_script"' EXIT && curl -fsSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/cleanup.sh && chmod +x "$tmp_script" && "$tmp_script"); }
+```
+
+</details>
 
 ---
 
@@ -1925,26 +1790,10 @@ tmp_script=$(mktemp) && curl -sSL -o "${tmp_script}" https://raw.githubuserconte
 1. Fork the project
 2. Create your branch: `git checkout -b AmazingFeature`
 3. Point your kube.tf `source` to local clone
-4. Useful commands:
-   ```sh
-   repo_root="$(git -C ../kube-hetzner rev-parse --show-toplevel)"
-   "$repo_root/scripts/cleanup.sh"
-   build_root="$(mktemp -d)"
-   KH_SOURCE_DIRECTORY="$repo_root" folder_name=generated \
-     folder_path="$build_root" create_snapshots=none \
-     "$repo_root/scripts/create.sh"
-   cd "$build_root/generated/packer"
-   ./scripts/install-verified-packer-plugin-hcloud.sh
-   for template in hcloud-leapmicro-snapshots.pkr.hcl hcloud-microos-snapshots.pkr.hcl; do
-     for distro in k3s rke2; do
-       packer build -var "selinux_package_to_install=${distro}" "$template"
-     done
-   done
-   ```
-5. Update `kube.tf.example` if needed
-6. Commit: `git commit -m 'Add AmazingFeature'`
-7. Push: `git push origin AmazingFeature`
-8. Open PR targeting `master` branch
+4. Update `kube.tf.example` if needed
+5. Commit: `git commit -m 'Add AmazingFeature'`
+6. Push: `git push origin AmazingFeature`
+7. Open PR targeting `master` branch
 
 ### Support This Project
 

@@ -9,6 +9,12 @@ HCLOUD_TOKEN="${HCLOUD_TOKEN:-}"
 KH_SOURCE_COMMIT="${KH_SOURCE_COMMIT:-}"
 KH_SOURCE_ARCHIVE_SHA256="${KH_SOURCE_ARCHIVE_SHA256:-}"
 KH_PACKER_BUNDLE_MANIFEST_SHA256="${KH_PACKER_BUNDLE_MANIFEST_SHA256:-}"
+KH_SOURCE_REF="${KH_SOURCE_REF:-master}"
+
+# Downloaded use defaults to master. Exceptional strict remote use requires
+# KH_SOURCE_COMMIT, KH_SOURCE_ARCHIVE_SHA256, and
+# KH_PACKER_BUNDLE_MANIFEST_SHA256 together. KH_SOURCE_DIRECTORY is reserved
+# for an explicitly selected local checkout and cannot be combined with pins.
 
 # Check if terraform, packer and hcloud CLIs are present
 command -v ssh >/dev/null 2>&1 || {
@@ -26,7 +32,7 @@ else
 fi
 
 command -v packer >/dev/null 2>&1 || {
-    echo "packer is not installed. Install it with 'brew install packer'."
+    echo "Packer 1.16.0 is required. Install it from https://releases.hashicorp.com/packer/1.16.0/."
     exit 1
 }
 command -v hcloud >/dev/null 2>&1 || {
@@ -60,6 +66,17 @@ require_sha256() {
     fi
 }
 
+require_source_ref() {
+    local value="$1"
+    if [[ ! "$value" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] ||
+       [[ "$value" == *..* ]] ||
+       [[ "$value" == *//* ]] ||
+       [[ "$value" == */ ]]; then
+        echo "KH_SOURCE_REF must be a simple branch, tag, or commit name." >&2
+        exit 1
+    fi
+}
+
 # Ask for the folder name
 if [ -z "${folder_name}" ] ; then
     read -r -p "Enter the name of the folder you want to create (leave empty to use the current directory instead, useful for upgrades): " folder_name
@@ -84,6 +101,14 @@ fi
 source_directory="${KH_SOURCE_DIRECTORY:-}"
 bundle_directory=""
 
+if [ -n "$source_directory" ] &&
+   { [ -n "$KH_SOURCE_COMMIT" ] ||
+     [ -n "$KH_SOURCE_ARCHIVE_SHA256" ] ||
+     [ -n "$KH_PACKER_BUNDLE_MANIFEST_SHA256" ]; }; then
+    echo "KH_SOURCE_DIRECTORY cannot be combined with remote source pins." >&2
+    exit 1
+fi
+
 cleanup_source_bundle() {
     if [ -n "$bundle_directory" ]; then
         rm -rf "$bundle_directory"
@@ -92,16 +117,26 @@ cleanup_source_bundle() {
 trap cleanup_source_bundle EXIT
 
 ensure_source_directory() {
+    local source_ref
+
     if [ -n "$source_directory" ]; then
         return
     fi
 
-    if [[ ! "$KH_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-        echo "KH_SOURCE_COMMIT must be a full 40-character commit SHA in remote mode." >&2
-        exit 1
+    if [ -n "$KH_SOURCE_COMMIT" ] ||
+       [ -n "$KH_SOURCE_ARCHIVE_SHA256" ] ||
+       [ -n "$KH_PACKER_BUNDLE_MANIFEST_SHA256" ]; then
+        if [[ ! "$KH_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Pinned remote mode requires a full 40-character KH_SOURCE_COMMIT." >&2
+            exit 1
+        fi
+        require_sha256 "KH_SOURCE_ARCHIVE_SHA256" "$KH_SOURCE_ARCHIVE_SHA256"
+        require_sha256 "KH_PACKER_BUNDLE_MANIFEST_SHA256" "$KH_PACKER_BUNDLE_MANIFEST_SHA256"
+        source_ref="$KH_SOURCE_COMMIT"
+    else
+        require_source_ref "$KH_SOURCE_REF"
+        source_ref="$KH_SOURCE_REF"
     fi
-    require_sha256 "KH_SOURCE_ARCHIVE_SHA256" "$KH_SOURCE_ARCHIVE_SHA256"
-    require_sha256 "KH_PACKER_BUNDLE_MANIFEST_SHA256" "$KH_PACKER_BUNDLE_MANIFEST_SHA256"
 
     bundle_directory="$(mktemp -d)"
     archive_file="$bundle_directory/kube-hetzner.tar.gz"
@@ -110,9 +145,10 @@ ensure_source_directory() {
     curl -fsS --proto '=https' --tlsv1.2 --max-redirs 0 \
         --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 \
         --max-filesize 536870912 \
-        "https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/${KH_SOURCE_COMMIT}" \
+        "https://codeload.github.com/mysticaltech/terraform-hcloud-kube-hetzner/tar.gz/${source_ref}" \
         -o "$archive_file"
-    if [ "$(sha256_file "$archive_file")" != "$KH_SOURCE_ARCHIVE_SHA256" ]; then
+    if [ -n "$KH_SOURCE_ARCHIVE_SHA256" ] &&
+       [ "$(sha256_file "$archive_file")" != "$KH_SOURCE_ARCHIVE_SHA256" ]; then
         echo "Commit-addressed source archive digest mismatch." >&2
         exit 1
     fi

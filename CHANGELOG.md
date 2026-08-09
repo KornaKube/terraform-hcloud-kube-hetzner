@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Changes
 
-- Kept GitHub CI focused on cheap required lint, documentation drift, and tag publication; HCloud smoke, credentials, cluster inspection, and teardown now remain local. Tag publication rejects missing release notes, while the local bootstrap gate prevents pinned releases from regressing to placeholders and lets future functional commits retain the previous valid pins.
+- Kept GitHub CI focused on cheap required lint, documentation drift, and tag publication; HCloud smoke, credentials, cluster inspection, and teardown now remain local. Tag publication rejects missing release notes.
+- Restored the one-command `createkh` and `cleanupkh` flows for Bash/Zsh and Fish. `scripts/create.sh` again works when downloaded directly, while manifest verification and atomic Packer bundle publication stay behind the simple entrypoint.
+
+### 📚 Documentation
+
+- Added the K3s certificate-expiry recovery step for retrieving a renewed admin kubeconfig over SSH from a healthy control-plane node and replacing its loopback API endpoint locally.
 
 ---
 

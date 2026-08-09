@@ -198,10 +198,10 @@ for template in hcloud-leapmicro-snapshots.pkr.hcl hcloud-microos-snapshots.pkr.
 done
 ```
 
-For a release canary, set `KH_SOURCE_DIRECTORY` to the extracted and
-SHA-256-verified archive for functional commit A. Record the generated bundle's
-manifest digest, snapshot IDs, architectures, and distro labels before any
-cluster apply. Never build from loose templates copied into `kube-test`.
+For a release canary, set `KH_SOURCE_DIRECTORY` to the exact release checkout or
+an extracted archive of that release. Record the generated bundle's manifest
+digest, snapshot IDs, architectures, and distro labels before any cluster
+apply. Never build from loose templates copied into `kube-test`.
 
 ## Step 4: Run Matrix (Simple to Complex)
 

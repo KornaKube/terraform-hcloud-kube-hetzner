@@ -125,12 +125,11 @@ jobs:
           terraform_wrapper: false
 
       - name: Install verification tools
-        run: sudo apt-get update && sudo apt-get install --yes hcloud-cli ripgrep rpm shellcheck zip
+        run: sudo apt-get update && sudo apt-get install --yes fish hcloud-cli ripgrep rpm shellcheck zip zsh
 
       - name: Validate Packer template and verifier fixtures
         env:
           PACKER_PLUGIN_PATH: ${{ runner.temp }}/packer-plugins
-          KH_RELEASE_BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: |
           packer fmt -check packer-template/hcloud-leapmicro-snapshots.pkr.hcl packer-template/hcloud-microos-snapshots.pkr.hcl
           packer validate -syntax-only packer-template/hcloud-leapmicro-snapshots.pkr.hcl
@@ -151,13 +150,9 @@ jobs:
           scripts/tests/test_create_distribution.sh
           scripts/tests/test_github_release_controls_contract.sh
           scripts/tests/test_packer_security_bundle_install.sh
-          scripts/tests/test_readme_release_bootstrap.sh
-          scripts/tests/test_release_bootstrap_pr_gate.sh
-          scripts/tests/test_release_bootstrap_topology.sh
           scripts/tests/test_release_remote_branch_contract.sh
           scripts/tests/test_release_atomic_tag_push.sh
           scripts/tests/test_generated_site_contract.sh
-          scripts/check-release-bootstrap-pr-gate.sh
           scripts/tests/test_rancher_rpm_installer.sh
           scripts/tests/test_pr_scanner_contract.sh
           scripts/tests/test_release_workflow_contract.sh

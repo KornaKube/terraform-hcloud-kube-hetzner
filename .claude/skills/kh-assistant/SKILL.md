@@ -320,6 +320,14 @@ after size-aware kubelet reservations landed.
    - Link to related issues
 ```
 
+For K3s certificate expiry, remind the operator that the admin kubeconfig also
+contains client certificates. After restarting or rotating control-plane
+certificates, retrieve a fresh `/etc/rancher/k3s/k3s.yaml` over SSH from a
+healthy control-plane node, save it with mode `0600`, and replace its
+`https://127.0.0.1:6443` server with the cluster's reachable API endpoint before
+testing it with `kubectl`. Do not tell operators to keep using a stale local
+kubeconfig after certificate recovery.
+
 ### Workflow: Teardown / Destroy
 
 ```
