@@ -5,6 +5,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 workflow="$repo_root/.github/workflows/publish-release.yaml"
 lint_workflow="$repo_root/.github/workflows/lint_pr.yaml"
+docs_workflow="$repo_root/.github/workflows/generate-docs.yaml"
 release_skill="$repo_root/.claude/skills/prepare-release/SKILL.md"
 
 fail() {
@@ -37,6 +38,12 @@ grep -Fq 'scripts/tests/test_create_distribution.sh' "$lint_workflow" \
   || fail "pull-request CI omits createkh distribution fixtures"
 grep -Fq 'scripts/tests/test_generated_site_contract.sh' "$lint_workflow" \
   || fail "pull-request CI omits generated createkh documentation checks"
+grep -Eq 'apt-get install .*fish.*zsh' "$docs_workflow" \
+  || fail "master docs CI must install every shell required by the launcher contract"
+grep -Fq 'KH_REQUIRE_OPTIONAL_SHELLS: "1"' "$docs_workflow" \
+  || fail "master docs CI must fail when a documented shell verifier is unavailable"
+grep -Fq 'KH_REQUIRE_OPTIONAL_SHELLS: "1"' "$lint_workflow" \
+  || fail "pull-request CI must fail when a documented shell verifier is unavailable"
 grep -Fq 'scripts/tests/test_release_remote_branch_contract.sh' "$lint_workflow" \
   || fail "pull-request CI omits adversarial authoritative-branch fixtures"
 grep -Fq 'scripts/tests/test_release_atomic_tag_push.sh' "$lint_workflow" \

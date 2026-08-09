@@ -321,7 +321,7 @@ The subsequent sections on `control_plane_nodepools` and `agent_nodepools` are e
 **Section 2.1: `control_plane_nodepools` - The Brains of the Operation**
 
 ```terraform
-  # For the control planes, at least three nodes are the minimum for HA. Otherwise, you need to turn off the automatic upgrades (see README).
+  # For the control planes, at least three nodes are the minimum for HA. Otherwise, turn off automatic upgrades as described in docs/upgrades.md.
   # **It must always be an ODD number, never even!** Search the internet for "split-brain problem with etcd" or see https://rancher.com/docs/k3s/latest/en/installation/ha-embedded/
   # For instance, one is ok (non-HA), two is not ok, and three is ok (becomes HA). It does not matter if they are in the same nodepool or not! So they can be in different locations and of various types.
 
@@ -1871,7 +1871,7 @@ Excellent! Let's continue our meticulous dissection.
 ```terraform
   # By default, SELinux is enabled in enforcing mode on all nodes. For container-specific SELinux issues,
   # consider using the pre-installed 'udica' tool to create custom, targeted SELinux policies instead of
-  # disabling SELinux globally. See the "Fix SELinux issues with udica" example in the README for details.
+  # disabling SELinux globally. See docs/recipes/security.md for the udica example.
   # enable_selinux = false
 ```
 

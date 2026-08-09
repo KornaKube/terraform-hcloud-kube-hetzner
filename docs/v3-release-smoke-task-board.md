@@ -10,7 +10,7 @@ Status: smoke gates in progress.
 - [x] S4 Plan matrix: Gateway API valid/invalid, embedded registry mirror valid/invalid, Tailscale transport constraints, kube-test root.
 - [x] S5 Final tightening from smoke failures.
 - [ ] S6 Commit, push, and update the open PR.
-- [ ] S7 External reviews: Gemini, Codex CLI, Atlas/ChatGPT extended thinking.
+- [ ] S7 Independent external review of the full diff with a final verdict.
 - [ ] S8 Integrate verified review findings and rerun affected checks.
 
 ## Blast Radius

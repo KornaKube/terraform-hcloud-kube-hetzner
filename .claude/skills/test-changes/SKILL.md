@@ -333,16 +333,9 @@ Check the error message - usually points to:
 - Type mismatch
 - Invalid reference
 
-## AI-Assisted Review
+## Independent Review
 
-For complex changes, get AI review:
-
-```bash
-# Codex for correctness
-codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
-  "Review these terraform changes for issues: $(git diff)"
-
-# Gemini for broad impact
-gemini --model gemini-3.1-pro-preview -p \
-  "@locals.tf @variables.tf Analyze impact of these changes: $(git diff)"
-```
+Before finalizing changes, obtain an independent review from a separate capable
+reviewer. Provide the exact diff and repository context, require a final verdict
+with file and line references, and verify every finding against code, plans, and
+runtime evidence. A partial or timed-out review does not satisfy this gate.

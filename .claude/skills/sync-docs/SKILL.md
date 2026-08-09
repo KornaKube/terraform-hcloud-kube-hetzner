@@ -28,6 +28,12 @@ Ensure documentation is synchronized across all key files when variables or feat
 | `docs/selinux.md` | SELinux policy provenance and AVC workflow | HIGH for SELinux changes |
 | `docs/v3-release-evidence.md` | Live proof and release evidence | HIGH for release claims |
 | `docs/terraform.md` | Auto-generated terraform docs | AUTO |
+| `docs/index.md` | Curated documentation map and routing hub | HIGH |
+| `docs/support-matrix.md` | Detailed capability and maturity contract | HIGH |
+| `docs/operations.md` | Day-2 access, scaling, and cluster operations | MEDIUM |
+| `docs/upgrades.md` | Module, Kubernetes, and transactional OS upgrades | HIGH |
+| `docs/troubleshooting.md` | Incident diagnosis and recovery procedures | HIGH |
+| `docs/recipes.md` / `docs/recipes/*` | Advanced configuration recipe index and focused guides | MEDIUM |
 | `docs/v3-topology-recommendations.md` | Topology chooser and release-shaping guidance | MEDIUM |
 | `examples/*/README.md` | Feature-specific operator examples | MEDIUM |
 | `tests/README.md` | Test gate expectations and live-test notes | MEDIUM |
@@ -59,22 +65,23 @@ digraph sync_flow {
 
 ## Step 1: Extract Variables from Source
 
-Use Gemini for large file analysis:
+Use exact extraction before semantic review:
 
 ```bash
 # List all variables from variables.tf
-gemini --model gemini-3.1-pro-preview -p "@variables.tf List ALL variable names defined in this file, one per line"
+rg -o '^variable "[^"]+"' variables.tf | cut -d'"' -f2 | sort -u
 
 # Get variable details
-gemini --model gemini-3.1-pro-preview -p "@variables.tf For variable '<name>', provide: type, default, description"
+sed -n '/^variable "<name>"/,/^}/p' variables.tf
 ```
 
 ## Step 2: Find Undocumented Variables
 
 ```bash
-# Compare variables.tf with docs/llms.md
-gemini --model gemini-3.1-pro-preview -p \
-  "@variables.tf @docs/llms.md List ALL variables from variables.tf that are NOT documented in docs/llms.md. Output one per line."
+# Compare source variable names with code-formatted names in docs/llms.md
+comm -23 \
+  <(rg -o '^variable "[^"]+"' variables.tf | cut -d'"' -f2 | sort -u) \
+  <(rg -o '`[a-zA-Z_][a-zA-Z0-9_]*`' docs/llms.md | tr -d '`' | sort -u)
 ```
 
 ## Step 3: Generate Documentation
@@ -136,9 +143,10 @@ Ensure new variables appear in the example with:
 - Grouped with related variables
 
 ```bash
-# Check what's in example vs variables.tf
-gemini --model gemini-3.1-pro-preview -p \
-  "@variables.tf @kube.tf.example List variables from variables.tf missing from kube.tf.example"
+# Inspect source variables that do not appear in kube.tf.example
+comm -23 \
+  <(rg -o '^variable "[^"]+"' variables.tf | cut -d'"' -f2 | sort -u) \
+  <(rg -o '[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*=' kube.tf.example | sed 's/[[:space:]]*=//' | sort -u)
 ```
 
 ## Step 6: Update README if Needed
@@ -148,10 +156,23 @@ Update README.md if:
 - New CNI or ingress option
 - Significant capability change
 
+README is the visual project entry point, four-step Quick Start, and
+documentation router. Keep the running-cluster image in the opening block and
+keep README at or below the contract limit enforced by
+`scripts/tests/test_generated_site_contract.sh`. Put debugging, upgrade,
+day-2 operations, long support notes, and advanced recipes in their focused
+guides; add or update the route in `docs/index.md` instead of growing README.
+
+When moving README content, keep repository-relative links valid from the new
+directory depth and regenerate `site-docs/index.md` with
+`python3 scripts/sync_docs_site.py`. The generator rewrites extracted README
+links for the `site-docs/` directory; verify them with the generated-site
+contract test.
+
 Features section should match actual capabilities.
 
 For Tailscale changes, keep these surfaces in sync:
-- `README.md` support table and Multinetwork section
+- `docs/support-matrix.md` support levels and `docs/recipes/networking-and-scale.md` Tailscale recipe
 - `kube.tf.example` Tailscale node-transport comments
 - `docs/llms.md` support levels and variable notes
 - `docs/v3-topology-recommendations.md`
@@ -216,17 +237,15 @@ Do not make generic "disable SELinux" recommendations. The operator path is
 AVC evidence, udica-first workload policy, upstream module policy only with
 reproducible denials, and per-pool `selinux = false` as the last resort.
 
-For release presentation changes, verify README's "What's New in v3" tag link
-still points at the current release tag, and keep the section current with the
-live GitHub release body.
+For release presentation changes, verify README's compact current-release link
+points at the latest release tag and that `CHANGELOG.md` contains the release
+content.
 
 ## Step 7: Verify Consistency
 
-```bash
-# Final verification
-gemini --model gemini-3.1-pro-preview -p \
-  "@variables.tf @docs/llms.md @kube.tf.example Verify these files are consistent. List any discrepancies."
-```
+Run the exact comparisons above, `terraform-docs`, the generated-site contract,
+and the relevant validators from `/test-changes`. Then inspect defaults and
+descriptions for each changed variable directly in all three surfaces.
 
 ### Verification Checklist
 
@@ -237,7 +256,7 @@ gemini --model gemini-3.1-pro-preview -p \
 - [ ] Default values consistent across docs
 - [ ] Major-upgrade safety wording matches `MIGRATION.md`
 - [ ] SELinux workload-denial wording points to `docs/selinux.md`
-- [ ] README "What's New in v3" release-tag URL is current for the release train
+- [ ] README current-release URL is current for the release train
 
 ## Common Sync Issues
 
@@ -263,7 +282,8 @@ gemini --model gemini-3.1-pro-preview -p \
 
 ```bash
 # Regenerate terraform docs
-terraform-docs markdown . > docs/terraform.md
+terraform-docs markdown table --config .terraform-docs.yml \
+  --output-mode inject --output-file docs/terraform.md .
 
 # Validate v3 topology/Gateway/registry surfaces
 uv run scripts/validate_v3_final_polish_examples.py

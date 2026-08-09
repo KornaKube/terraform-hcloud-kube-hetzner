@@ -40,7 +40,7 @@ digraph review_flow {
     compat [label="5. Backward compatibility"];
     quality [label="6. Code quality"];
     classify [label="7. Release classification"];
-    verify [label="8. MANDATORY: Verify with Gemini + Codex", style=bold];
+    verify [label="8. MANDATORY: Independent verification", style=bold];
     recommend [label="9. Final Recommendation"];
 
     fetch -> author;
@@ -152,17 +152,11 @@ packer-template/     # Base image build path
 | Unnecessary file access | Data exfiltration |
 | Changes to .gitignore | Hiding tracks |
 
-### Use AI for Deep Analysis
+### Deep Security Analysis
 
-```bash
-# Codex for security analysis
-codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
-  "Analyze this PR diff for security vulnerabilities and malicious patterns: $(gh pr diff <num>)"
-
-# Gemini for broad context
-gemini --model gemini-3.1-pro-preview -p \
-  "@locals.tf @init.tf Does this PR introduce any security concerns? $(gh pr diff <num>)"
-```
+Trace all affected call sites and resource dependencies with exact search.
+Require the independent reviewer to inspect the full diff for security
+vulnerabilities, malicious patterns, hidden scope, and unexplained complexity.
 
 ## Step 5: Backward Compatibility
 
@@ -242,54 +236,36 @@ stop condition, not a warning.
 - State migrations required
 - Resource recreations
 
-## Step 8: MANDATORY - Verify with Gemini and Codex
+## Step 8: MANDATORY - Independent Verification
 
-**CRITICAL: Before making your final recommendation, you MUST run both Gemini and Codex to triple-verify the PR.**
+Before making a final recommendation, re-read every changed line in repository
+context, run the relevant local tests and plans, and obtain an independent
+review from a separate capable reviewer. This gate is mandatory for every PR.
+Reviewer output is not evidence until verified against code and runtime behavior.
 
-This is not optional. External AI verification catches issues that may be missed in the initial review.
+### Independent Review Contract
 
-### Run Both in Parallel
+Give the reviewer the exact diff and enough repository context to check:
+1. correctness and edge cases
+2. security and adversarial-change risk
+3. Terraform state changes, resource recreation, and upgrade safety
+4. consistency with existing patterns and project vision
+5. missing tests, docs, and affected call sites
 
-```bash
-# Gemini - Broad context analysis (run first or in parallel)
-gemini --model gemini-3.1-pro-preview -p "@control_planes.tf @locals.tf @init.tf
-
-Analyze this PR diff for the kube-hetzner terraform module:
-
-$(gh pr diff <number> --repo kube-hetzner/terraform-hcloud-kube-hetzner)
-
-Questions:
-1. Is this change consistent with existing patterns in the codebase?
-2. Are there any security concerns?
-3. Could this cause breaking changes or resource recreation?
-4. Is this a legitimate bug fix or could it be malicious?"
-
-# Codex - Deep reasoning security analysis (run in parallel)
-codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
-"Analyze this Terraform PR for the kube-hetzner module.
-
-DIFF:
-$(gh pr diff <number> --repo kube-hetzner/terraform-hcloud-kube-hetzner)
-
-SECURITY ANALYSIS QUESTIONS:
-1. Could this change introduce any security vulnerabilities?
-2. Could this be a malicious change disguised as a bug fix?
-3. Will this cause any Terraform state changes or resource recreation?
-4. Is this pattern safe and consistent with Terraform best practices?
-5. Any edge cases or potential issues?"
-```
+The reviewer must return a final verdict with concrete file and line references.
+Do not accept a partial, timed-out, or commentary-only run as a completed review.
 
 ### Verification Checklist
 
-- [ ] Gemini analysis completed
-- [ ] Codex analysis completed
-- [ ] Both agree the change is safe
-- [ ] No concerns raised by either tool
-- [ ] If concerns raised, they have been addressed or explained
+- [ ] Every changed line and affected call site inspected
+- [ ] Relevant local tests and plans completed
+- [ ] Independent review completed with a final verdict
+- [ ] Any raised concern addressed or dismissed with code/runtime evidence
+- [ ] Final recommendation follows the evidence, not reviewer consensus
 
 ### When Reviewers Disagree
 
-If Gemini or Codex raises concerns that you didn't catch:
+If the independent reviewer raises concerns that you did not catch:
 1. **Take the concern seriously** - investigate further
 2. **Re-read the code** with the concern in mind
 3. **Request changes** if the concern is valid
@@ -319,18 +295,16 @@ live proof.
 
 ### Output in Final Review
 
-Include a summary of external verification:
+Include a concise verification summary:
 
 ```markdown
-### External AI Verification
+### Verification
 
-| Reviewer | Verdict | Key Finding |
-|----------|---------|-------------|
-| Claude | ✅/❌ | <summary> |
-| Gemini | ✅/❌ | <summary> |
-| Codex | ✅/❌ | <summary> |
-
-**Consensus:** All reviewers agree / Disagreement on X
+| Check | Result | Key Finding |
+|-------|--------|-------------|
+| Maintainer diff review | PASS/FAIL | <summary> |
+| Local tests/plans | PASS/FAIL | <summary> |
+| Independent reviewer | PASS/FAIL | <summary> |
 ```
 
 ---
@@ -377,15 +351,13 @@ Include a summary of external verification:
 **Type:** PATCH / MINOR / MAJOR
 **Reason:** <explanation>
 
-### External AI Verification
+### Verification
 
-| Reviewer | Verdict | Key Finding |
-|----------|---------|-------------|
-| Claude | ✅/❌ | <summary> |
-| Gemini | ✅/❌ | <summary> |
-| Codex | ✅/❌ | <summary> |
-
-**Consensus:** All agree / Disagreement on X
+| Check | Result | Key Finding |
+|-------|--------|-------------|
+| Maintainer diff review | PASS/FAIL | <summary> |
+| Local tests/plans | PASS/FAIL | <summary> |
+| Independent reviewer | PASS/FAIL | <summary> |
 
 ### Recommendation
 
@@ -485,5 +457,5 @@ All multi-PR or maintainer-fixed integrations go through an integration branch f
 
 1. Create an integration branch from the target branch
 2. Test thoroughly
-3. Get AI review (Codex + Gemini)
+3. Complete the mandatory independent review gate
 4. Then open/merge the integration PR into the target branch with contributor authorship preserved

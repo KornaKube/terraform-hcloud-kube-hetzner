@@ -11,6 +11,12 @@ ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 KUBE_EXAMPLE = ROOT / "kube.tf.example"
 SITE_DOCS = ROOT / "site-docs"
+REPOSITORY_BLOB_BASE = (
+    "https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/blob/master/"
+)
+REPOSITORY_RAW_BASE = (
+    "https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/"
+)
 
 
 def _extract_section(markdown: str, heading: str) -> str:
@@ -37,6 +43,25 @@ def _extract_intro(markdown: str) -> str:
         if line.strip() == "---":
             break
     return "\n".join(cleaned).strip()
+
+
+def _rewrite_repo_relative_links(markdown: str) -> str:
+    """Keep extracted README links valid on the deployed MkDocs site."""
+
+    link = re.compile(r"(!?\[[^\]]*\]\()([^)]+)(\))")
+
+    def rewrite(match: re.Match[str]) -> str:
+        target = match.group(2)
+        if target.startswith(("#", "http://", "https://", "mailto:", "/", "../")):
+            return match.group(0)
+        base = (
+            REPOSITORY_RAW_BASE
+            if match.group(1).startswith("!")
+            else REPOSITORY_BLOB_BASE
+        )
+        return f"{match.group(1)}{base}{target.removeprefix('./')}{match.group(3)}"
+
+    return link.sub(rewrite, markdown)
 
 
 def _module_body(example: str, module_name: str) -> str:
@@ -219,9 +244,9 @@ def render() -> dict[Path, str]:
     readme = README.read_text(encoding="utf-8")
     kube_example = KUBE_EXAMPLE.read_text(encoding="utf-8")
 
-    intro = _extract_intro(readme)
-    quick_start = _extract_section(readme, "Quick Start")
-    architecture = _extract_section(readme, "Architecture")
+    intro = _rewrite_repo_relative_links(_extract_intro(readme))
+    quick_start = _rewrite_repo_relative_links(_extract_section(readme, "Quick Start"))
+    architecture = _rewrite_repo_relative_links(_extract_section(readme, "Architecture"))
 
     index_content = "\n\n".join(
         [

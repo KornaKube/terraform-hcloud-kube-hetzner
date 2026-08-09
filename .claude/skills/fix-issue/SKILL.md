@@ -126,15 +126,9 @@ cat locals.tf        # Core logic and computed values
 
 ### For Complex Issues - Use AI Tools
 
-```bash
-# Codex CLI for deep reasoning
-codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
-  "Analyze this issue and identify root cause: <issue description>"
-
-# Gemini for large context analysis
-gemini --model gemini-3.1-pro-preview -p \
-  "@locals.tf @variables.tf Analyze how <feature> works and potential issues"
-```
+Use exact search, file inspection, and git history for broad context. For a
+complex or non-obvious issue, obtain an independent analysis from a separate
+capable reviewer and verify its findings against code and reproduction evidence.
 
 ## Step 5: Enter Plan Mode
 

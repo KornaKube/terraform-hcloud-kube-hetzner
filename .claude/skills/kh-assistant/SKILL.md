@@ -15,7 +15,7 @@ Expert assistant for **terraform-hcloud-kube-hetzner** — deploying production-
 # 1. Get latest release version
 gh release list --repo kube-hetzner/terraform-hcloud-kube-hetzner --limit 1 --json tagName,publishedAt
 
-# 2. Read key files for context (use Gemini for large files)
+# 2. Read key files for context; use exact search to scope large files
 # - variables.tf — all configurable options
 # - docs/llms.md — PRIMARY comprehensive documentation (~60k tokens)
 # - kube.tf.example — working example
@@ -778,8 +778,7 @@ rg -n 'variable "<name>"' variables.tf
 # Search by keyword
 rg -n -C 3 'description.*<keyword>' variables.tf
 
-# Use Gemini for comprehensive search
-gemini --model gemini-3.1-pro-preview -p "@docs/llms.md Explain the <variable_name> variable"
+# Inspect the complete variable section in docs/llms.md after locating it
 ```
 
 ### GitHub Commands

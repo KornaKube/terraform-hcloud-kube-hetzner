@@ -4,11 +4,12 @@
 
 # Kube-Hetzner
 
-### Production-Ready Kubernetes on Hetzner Cloud
+### Production-ready Kubernetes on Hetzner Cloud
 
-**HA by default • Auto-upgrading • Cost-optimized**
+**HA by default | Auto-upgrading | Cost-optimized**
 
-A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k3s on openSUSE Leap Micro (default) / MicroOS (legacy)<br>deployed on [Hetzner Cloud](https://hetzner.com)
+
+A highly optimized, easy-to-operate Kubernetes cluster powered by k3s or RKE2 on openSUSE Leap Micro, deployed on [Hetzner Cloud](https://hetzner.com).
 
 
 
@@ -38,7 +39,7 @@ A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k
    set tmp_script (mktemp); curl -fsSL -o "$tmp_script" https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/scripts/create.sh; and chmod +x "$tmp_script"; and env -u KH_SOURCE_DIRECTORY bash "$tmp_script"; set run_status $status; rm -f "$tmp_script"; test $run_status -eq 0
    ```
 
-4. Edit `kube.tf`, remove any example node pools you do not need, then deploy:
+4. Edit `kube.tf`, remove example node pools you do not need, then deploy:
 
    ```sh
    cd <your-project-folder>
@@ -47,6 +48,4 @@ A highly optimized, easy-to-use, auto-upgradable Kubernetes cluster powered by k
    tofu apply
    ```
 
-   Use `terraform` instead of `tofu` if that is what you installed. See the [configuration reference](docs/terraform.md) for all options.
-
----
+   Use `terraform` instead of `tofu` if that is what you installed. Every option is listed in the [generated configuration reference](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/blob/master/docs/terraform.md).

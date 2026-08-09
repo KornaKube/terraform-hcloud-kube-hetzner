@@ -5,6 +5,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readme="$repo_root/README.md"
 site_index="$repo_root/site-docs/index.md"
+docs_index="$repo_root/docs/index.md"
+troubleshooting="$repo_root/docs/troubleshooting.md"
 tmp="$(mktemp -d)"
 trap 'find "$tmp" -depth -delete' EXIT
 
@@ -28,7 +30,7 @@ command_after_label() {
 python3 "$repo_root/scripts/sync_docs_site.py" --check \
   || fail "checked-in site documentation does not match its sources"
 
-if rg -n 'BEGIN_KH_VERIFIED_BOOTSTRAP|__KH_SOURCE_|__KH_PACKER_BUNDLE_' "$site_index"; then
+if grep -En 'BEGIN_KH_VERIFIED_BOOTSTRAP|__KH_SOURCE_|__KH_PACKER_BUNDLE_' "$site_index"; then
   fail "generated site still exposes release bootstrap internals"
 fi
 grep -Fq 'master/scripts/create.sh' "$site_index" \
@@ -37,19 +39,48 @@ grep -Fq 'Bash/Zsh:' "$site_index" \
   || fail "generated quick start omits the Bash/Zsh createkh command"
 grep -Fq 'Fish:' "$site_index" \
   || fail "generated quick start omits the Fish createkh command"
+grep -Fq '[generated configuration reference](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner/blob/master/docs/terraform.md)' "$site_index" \
+  || fail "generated quick start contains a broken documentation link"
 quick_start="$(sed -n '/^## Quick Start$/,/^## /p' "$site_index")"
-test "$(grep -Ec '^[1-4]\. ' <<< "$quick_start")" -eq 4 \
+test "$(grep -Ec '^[0-9]+\. ' <<< "$quick_start")" -eq 4 \
   || fail "generated quick start must remain a four-step path"
+for step in 1 2 3 4; do
+  test "$(grep -Ec "^${step}\\. " <<< "$quick_start")" -eq 1 \
+    || fail "generated quick start must contain step $step exactly once"
+done
 if grep -Eq '<details>|What the script does|Use a specific release' <<< "$quick_start"; then
   fail "generated quick start contains optional or internal setup detail"
 fi
+
+test "$(wc -l < "$readme" | tr -d ' ')" -le 350 \
+  || fail "README must remain a concise project overview and documentation index"
+readme_quick_start="$(sed -n '/^## Quick Start$/,/^## /p' "$readme")"
+test "$(grep -Ec '^[0-9]+\. ' <<< "$readme_quick_start")" -eq 4 \
+  || fail "README quick start must remain a four-step path"
+for step in 1 2 3 4; do
+  test "$(grep -Ec "^${step}\\. " <<< "$readme_quick_start")" -eq 1 \
+    || fail "README quick start must contain step $step exactly once"
+done
+screenshot_line="$(grep -nF '.images/kubectl-pod-all-17022022.png' "$readme" | head -1 | cut -d: -f1 || true)"
+highlights_line="$(grep -n '^## Highlights$' "$readme" | head -1 | cut -d: -f1 || true)"
+test -n "$screenshot_line" && test "$screenshot_line" -lt "$highlights_line" \
+  || fail "README must show the running-cluster image in its opening block"
+if grep -Eq '^## .*Debugging|K3s certificate expiry' "$readme"; then
+  fail "README contains troubleshooting procedures that belong in docs/troubleshooting.md"
+fi
+grep -Fq 'K3s certificate expiry' "$troubleshooting" \
+  || fail "troubleshooting guide omits K3s certificate recovery"
+for doc in upgrades.md support-matrix.md operations.md recipes.md troubleshooting.md; do
+  grep -Fq "($doc)" "$docs_index" \
+    || fail "documentation index omits $doc"
+done
 
 create_bash="$(command_after_label "$readme" '   Bash/Zsh:')"
 create_fish="$(command_after_label "$readme" '   Fish:')"
 cleanup_bash="$(command_after_label "$readme" 'Forceful cleanup fallback:')"
 cleanup_fish="$(command_after_label "$readme" '<summary><strong>Fish shell version</strong></summary>')"
-kubeconfig_recovery="$(command_after_label "$readme" 'it before atomically replacing your local copy:')"
-takedown="$(sed -n '/^## 💣 Takedown$/,/^## /p' "$readme")"
+kubeconfig_recovery="$(command_after_label "$troubleshooting" 'it before atomically replacing your local copy:')"
+takedown="$(sed -n '/^## Remove a Cluster$/,/^## /p' "$readme")"
 takedown_bash="$(awk '
   /^```sh$/ { fenced = 1; next }
   fenced && /^```$/ { fenced = 0; print ""; next }
@@ -67,11 +98,28 @@ grep -Fq 'cleanupkh()' <<< "$takedown" \
 
 bash -n -c "$create_bash"
 bash -n -c "$takedown_bash"
-zsh -n -c "$create_bash"
-zsh -n -c "$takedown_bash"
-fish -n -c "$create_fish"
-fish -n -c "$cleanup_fish"
 bash -n -c "$kubeconfig_recovery"
+
+has_zsh=0
+has_fish=0
+command -v zsh >/dev/null 2>&1 && has_zsh=1
+command -v fish >/dev/null 2>&1 && has_fish=1
+
+if [[ "${KH_REQUIRE_OPTIONAL_SHELLS:-0}" == 1 ]]; then
+  [[ "$has_zsh" -eq 1 ]] || fail "zsh is required to verify the documented launchers"
+  [[ "$has_fish" -eq 1 ]] || fail "fish is required to verify the documented launchers"
+fi
+[[ "$has_zsh" -eq 1 ]] || printf 'SKIP: zsh unavailable; zsh launcher checks were not run.\n' >&2
+[[ "$has_fish" -eq 1 ]] || printf 'SKIP: fish unavailable; fish launcher checks were not run.\n' >&2
+
+if [[ "$has_zsh" -eq 1 ]]; then
+  zsh -n -c "$create_bash"
+  zsh -n -c "$takedown_bash"
+fi
+if [[ "$has_fish" -eq 1 ]]; then
+  fish -n -c "$create_fish"
+  fish -n -c "$cleanup_fish"
+fi
 
 fake_bin="$tmp/bin"
 launcher_fixture="$tmp/launcher-fixture.sh"
@@ -129,12 +177,19 @@ launcher_env=(
   README_LAUNCHER_SYSTEM_CP="$(command -v cp)"
 )
 env "${launcher_env[@]}" KH_SOURCE_DIRECTORY=/untrusted/local/tree bash -c "$create_bash"
-env "${launcher_env[@]}" KH_SOURCE_DIRECTORY=/untrusted/local/tree zsh -c "$create_bash"
-env "${launcher_env[@]}" KH_SOURCE_DIRECTORY=/untrusted/local/tree fish -c "$create_fish"
 env "${launcher_env[@]}" bash -c "$cleanup_bash"
-env "${launcher_env[@]}" zsh -c "$cleanup_bash"
-env "${launcher_env[@]}" fish -c "$cleanup_fish"
-test "$(wc -l < "$launcher_log" | tr -d ' ')" -eq 6 \
+expected_launcher_runs=2
+if [[ "$has_zsh" -eq 1 ]]; then
+  env "${launcher_env[@]}" KH_SOURCE_DIRECTORY=/untrusted/local/tree zsh -c "$create_bash"
+  env "${launcher_env[@]}" zsh -c "$cleanup_bash"
+  expected_launcher_runs=$((expected_launcher_runs + 2))
+fi
+if [[ "$has_fish" -eq 1 ]]; then
+  env "${launcher_env[@]}" KH_SOURCE_DIRECTORY=/untrusted/local/tree fish -c "$create_fish"
+  env "${launcher_env[@]}" fish -c "$cleanup_fish"
+  expected_launcher_runs=$((expected_launcher_runs + 2))
+fi
+test "$(wc -l < "$launcher_log" | tr -d ' ')" -eq "$expected_launcher_runs" \
   || fail "documented createkh and cleanupkh launchers did not all execute"
 
 recovery_dir="$tmp/recovery"

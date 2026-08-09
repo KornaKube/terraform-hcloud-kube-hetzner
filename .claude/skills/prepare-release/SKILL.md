@@ -55,8 +55,8 @@ Therefore:
 - If Karim asks for a tiny release-prep correction during release, commit it on the release branch, merge it through the protected `master` pull-request path, then tag the resulting merged commit.
 - After a successful release, cut `CHANGELOG.md`: reset `## [Unreleased]` to an empty placeholder and move the released notes under `## [X.Y.Z] - YYYY-MM-DD`. Merge that cleanup through a release-maintenance pull request.
 - Previous release notes must never remain under `## [Unreleased]`; otherwise the next tag workflow will publish stale notes again.
-- For v3-series releases, verify README's "What's New in v3" link still points
-  at the current release tag URL and the section matches the live release body.
+- For v3-series releases, verify README's compact "Current release:" link points
+  at the latest release tag and `CHANGELOG.md` carries the release content.
 - After significant releases, regenerate the machine-readable knowledge file
   (`kube-hetzner-knowledge.jsondata`) and confirm its `meta.version` matches
   the release. The Custom GPT was retired 2026-07-13 — the agent skills
@@ -118,15 +118,9 @@ git log $LATEST..HEAD --oneline
 git log $LATEST..HEAD --pretty=format:"- %s (%h)"
 ```
 
-Use Gemini for comprehensive analysis:
-
-```bash
-gemini --model gemini-3.1-pro-preview -p \
-  "Analyze these git changes for a changelog. Categorize into: Features, Bug Fixes, Breaking Changes, Documentation. Ignore internal refactors.
-
-$(git log $LATEST..HEAD --oneline)
-$(git diff $LATEST..HEAD --stat)"
-```
+Read the commit list and diff directly. Trace user-facing changes to their
+changelog entries and classify them as features, bug fixes, breaking changes,
+or documentation. Ignore internal refactors unless they alter behavior.
 
 ## Step 2: Classify Release Type
 
@@ -142,12 +136,10 @@ $(git diff $LATEST..HEAD --stat)"
 - Resource naming changes (causes recreation)
 - Required migration steps
 
-Use Codex for breaking change analysis:
-
-```bash
-codex exec -m gpt-5.5 -s read-only -c model_reasoning_effort="xhigh" \
-  "Analyze these changes for breaking changes affecting existing deployments: $(git diff $LATEST..HEAD -- variables.tf locals.tf)"
-```
+Obtain the mandatory independent review of breaking-change and resource-
+recreation risk. Give the reviewer the exact release diff and require a final
+verdict with concrete file and line references; verify every finding against
+the code and upgrade-plan evidence.
 
 ## Step 3: Update CHANGELOG.md
 
@@ -276,9 +268,9 @@ the module loads.
 
 Also verify `README.md`, `kube.tf.example`, `docs/llms.md`, and `.claude/skills/*/SKILL.md` do not contain removed v2 input names except in explicit migration sections.
 
-For v3 releases, verify README's "What's New in v3" release-tag URL points to
-the current tag and does not keep stale pre-release wording after the GitHub
-release exists. Regenerate `site-docs` and run
+For v3 releases, verify README's compact "Current release:" URL points to the
+latest tag and `CHANGELOG.md` carries the release content without stale
+pre-release wording. Regenerate `site-docs` and run
 `scripts/tests/test_generated_site_contract.sh`; the site must reproduce the
 same simple setup commands as the README.
 
@@ -485,7 +477,7 @@ Files that may need version updates:
 - [ ] Breaking changes documented with migration steps
 - [ ] Version badges updated (if needed)
 - [ ] `docs/terraform.md` regenerated
-- [ ] README "What's New in v3" release-tag URL is accurate/current for v3-series releases
+- [ ] README "Current release:" URL is accurate/current for v3-series releases
 - [ ] Generated site carries the same simple `createkh` setup commands as README
 - [ ] Knowledge file (`kube-hetzner-knowledge.jsondata`) regenerated when applicable and `meta.version` matches the release
 - [ ] Project skills checked for stale v2 names
